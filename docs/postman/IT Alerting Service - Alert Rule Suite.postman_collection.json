@@ -1,0 +1,2524 @@
+{
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// Automatically generate standard W3C traceparent (ADR-010) and X-Trace-Id",
+          "function generateHex(len) {",
+          "    let result = '';",
+          "    const chars = '0123456789abcdef';",
+          "    for (let i = 0; i < len; i++) {",
+          "        result += chars.charAt(Math.floor(Math.random() * chars.length));",
+          "    }",
+          "    return result;",
+          "}",
+          "const traceId = generateHex(32);",
+          "const spanId = generateHex(16);",
+          "const traceparent = `00-${traceId}-${spanId}-01`;",
+          "pm.request.headers.upsert({ key: 'traceparent', value: traceparent });",
+          "pm.request.headers.upsert({ key: 'X-Trace-Id', value: traceId });",
+          "pm.environment.set('currentTraceId', traceId);"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "info": {
+    "_exporter_id": "39879181",
+    "_postman_id": "e1f3b5c7-9a2b-4c4d-8e6f-7a8b9c0d1e2f",
+    "description": "Enterprise-grade E2E Postman Suite for the IT Alerting Service Domain (BIAN-aligned, ADR-001/005/013/019/030/031/032/033). Creates a rule for every check and a rule for one check, reads and lists them (oldest first), updates the definition, pauses and resumes a rule, reads the audit ledger in order, lists alerts (none: the tenant has no checks) and runs an evaluation that has nothing to open. A second folder proves the service is staff only (a REQUESTER gets 403 ERR-ALR-00403 on every route). A third covers the negative guarantees: validation (blank or long name, missing or unknown impact and urgency, missing requester, malformed check id, missing tenant), duplicate names (409) on create and on rename, illegal transitions, updating a paused rule, tenant isolation, unknown alerts, an unknown status filter, no way to write an alert by hand and the absence of DELETE, with RFC 7807 error_code assertions. It files everything under its own generated tenant id (alrOrganisationId). Opening an alert and its real incident, the recovery note, the race of simultaneous evaluations, the paused rule and the oldest-rule-wins choice are proved by the platform smoke (alerting-smoke).",
+    "name": "IT Alerting Service - Alert Rule Suite",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Health status is UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Health Check (Aggregated)",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ],
+              "raw": "{{base_url}}/health"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Liveness status is UP or UNKNOWN (no probe contributors registered)', () => pm.expect(['UP', 'UNKNOWN']).to.include(pm.response.json().status));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Liveness Probe",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "liveness"
+              ],
+              "raw": "{{base_url}}/health/liveness"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Readiness status is UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Readiness Probe",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "readiness"
+              ],
+              "raw": "{{base_url}}/health/readiness"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Contains JVM metrics', () => pm.expect(pm.response.text()).to.include('jvm_memory'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Prometheus Metrics",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prometheus"
+              ],
+              "raw": "{{base_url}}/prometheus"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns Swagger UI HTML', () => pm.expect(pm.response.text()).to.include('swagger-ui'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Swagger UI",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "swagger-ui",
+                "index.html"
+              ],
+              "raw": "{{base_url}}/swagger-ui/index.html"
+            }
+          }
+        }
+      ],
+      "name": "00. Infrastructure & Telemetry"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('alrOrganisationId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.set('alrUserId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.set('alrRequesterId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.set('alrCheckId', pm.variables.replaceIn('{{$guid}}'));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('ACTIVE, for every check, with the severities and the requester given', () => {",
+                  "    pm.expect(json.status).to.eql('ACTIVE');",
+                  "    pm.expect(json.checkId).to.be.oneOf([null, undefined]);",
+                  "    pm.expect(json.impact).to.eql('HIGH');",
+                  "    pm.expect(json.urgency).to.eql('MEDIUM');",
+                  "    pm.expect(json.requesterId).to.eql(pm.environment.get('alrRequesterId'));",
+                  "});",
+                  "pm.environment.set('ruleId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. Initiate a rule for every check (ACTIVE)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Production down\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Tied to that check', () => pm.expect(json.checkId).to.eql(pm.environment.get('alrCheckId')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. Initiate a rule for one check",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Intranet only\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"checkId\": \"{{alrCheckId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Same rule', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ruleId')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. Retrieve Rule By ID",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Oldest first', () => pm.expect(pm.response.json().map(r => r.name)).to.eql(['Production down', 'Intranet only']));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. List rules (both of this tenant, oldest first)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. Update: a new name and lower severities (204)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Everything down\",\n  \"impact\": \"LOW\",\n  \"urgency\": \"LOW\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Renamed, lower severities', () => { pm.expect(json.name).to.eql('Everything down'); pm.expect(json.impact).to.eql('LOW'); pm.expect(json.urgency).to.eql('LOW'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. Retrieve (updated)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. Control: pause (ACTIVE -> PAUSED)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Paused', () => pm.expect(pm.response.json().status).to.eql('PAUSED'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "08. Retrieve (PAUSED)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "09. Control: resume (PAUSED -> ACTIVE)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "control",
+                "resume"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/control/resume"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Ledger reads in order', () => pm.expect(json.map(e => e.action)).to.eql(['INITIATED', 'UPDATED', 'PAUSED', 'RESUMED']));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "10. Retrieve Rule Audit Ledger (every step, in order)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('None', () => pm.expect(pm.response.json()).to.eql([]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "11. List alerts (none yet: the tenant has no checks)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('None', () => pm.expect(pm.response.json()).to.eql([]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "12. List alerts by status and by check (none)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "OPEN"
+                },
+                {
+                  "key": "checkId",
+                  "value": "{{alrCheckId}}"
+                }
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/retrieve?status=OPEN&checkId={{alrCheckId}}"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Answered, or the monitor could not be read', () => pm.expect([200, 502]).to.include(pm.response.code));",
+                  "if (pm.response.code === 200) { const json = pm.response.json(); pm.test('Nothing opened, resolved or filed', () => { pm.expect(json.opened).to.eql(0); pm.expect(json.resolved).to.eql(0); pm.expect(json.incidentsOpened).to.eql(0); }); }",
+                  "else { pm.test('502 ERR-ALR-00502', () => pm.expect(pm.response.json().error_code).to.eql('ERR-ALR-00502')); }"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "13. Evaluate now (nothing to open or resolve; 502 only if the monitor is unreachable)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "evaluation",
+                "execute"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/evaluation/execute"
+            }
+          }
+        }
+      ],
+      "name": "01. Alert Rule Lifecycle (BIAN Behavior Qualifiers)"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. A REQUESTER cannot create a rule (403)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Requester attempt\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. A REQUESTER cannot read a rule (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. A REQUESTER cannot list rules (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. A REQUESTER cannot update a rule (403)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Requester attempt\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. A REQUESTER cannot pause a rule (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. A REQUESTER cannot read a rule audit trail (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. A REQUESTER cannot list alerts (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "08. A REQUESTER cannot read an alert (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "00000000-0000-0000-0000-000000000000",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/00000000-0000-0000-0000-000000000000/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "09. A REQUESTER cannot read an alert audit trail (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "00000000-0000-0000-0000-000000000000",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/00000000-0000-0000-0000-000000000000/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "10. A REQUESTER cannot evaluate (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "evaluation",
+                "execute"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/evaluation/execute"
+            }
+          }
+        }
+      ],
+      "name": "02. Staff Only (REQUESTER refused)"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. Initiate - Blank Name (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. Initiate - Name over 80 characters (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. Initiate - Missing Impact (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"urgency\": \"LOW\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. Initiate - Missing Urgency (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"LOW\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. Initiate - Unknown Impact (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"CRITICAL\",\n  \"urgency\": \"LOW\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. Initiate - Missing the requester the incident is filed for (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"LOW\",\n  \"urgency\": \"LOW\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. Initiate - Malformed check id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"checkId\": \"not-a-uuid\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "08. Initiate - Missing X-Tenant-Id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"notenant\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "09. Initiate - The same name twice in one tenant (409)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Intranet only\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "10. Initiate - The same name in another tenant is fine (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Intranet only {{$timestamp}}\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "00000000-0000-0000-0000-000000000001"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "11. Update - Rename onto a name that is taken (409)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Intranet only\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "12. Update - Blank name (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "13. Resume an ACTIVE rule is an illegal transition (409)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "control",
+                "resume"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/control/resume"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "14. Control: pause again, for the next case",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "15. Pause a PAUSED rule is an illegal transition (409)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "16. Update a PAUSED rule is allowed (204)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Everything down\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "17. Control: resume, leaving the rule ACTIVE",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "control",
+                "resume"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/control/resume"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "18. Retrieve - Non-existent rule (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "00000000-0000-0000-0000-000000000000",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/00000000-0000-0000-0000-000000000000/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "19. Retrieve - Malformed UUID Path (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "not-a-uuid",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/not-a-uuid/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "20. Retrieve - Another tenant answers like a missing one (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "00000000-0000-0000-0000-000000000001"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "21. Pause - Another tenant (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "00000000-0000-0000-0000-000000000001"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "22. Rule audit trail - Another tenant (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "00000000-0000-0000-0000-000000000001"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "23. Retrieve alert - Non-existent alert (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "00000000-0000-0000-0000-000000000000",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/00000000-0000-0000-0000-000000000000/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "24. Alert audit trail - Non-existent alert (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "00000000-0000-0000-0000-000000000000",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/00000000-0000-0000-0000-000000000000/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "25. List alerts - Unknown status (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "BOGUS"
+                }
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/retrieve?status=BOGUS"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not allowed', () => pm.expect([404, 405]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "26. Alerts cannot be written by hand: no POST on the root (404 or 405)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not allowed', () => pm.expect([404, 405]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "27. Delete - There is no DELETE (404 or 405)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "DELETE",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}"
+            }
+          }
+        }
+      ],
+      "name": "03. Negative Tests & Guarantees"
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8104"
+    }
+  ]
+}
