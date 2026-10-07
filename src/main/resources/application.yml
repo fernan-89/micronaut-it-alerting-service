@@ -189,3 +189,5 @@ thinklab:
     scheduler-enabled: ${THINKLAB_ALERTING_SCHEDULER_ENABLED:true}
     tick: 5s
     concurrency: 5
+    # Hosts a notice webhook may be reached at over plain http (a test double); empty in a real deployment: https only (ADR-036).
+    insecure-hosts: ${THINKLAB_ALERTING_INSECURE_HOSTS:}

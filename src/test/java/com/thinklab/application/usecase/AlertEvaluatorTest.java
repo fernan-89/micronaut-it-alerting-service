@@ -14,6 +14,7 @@ import com.thinklab.domain.port.IncidentsPort;
 import com.thinklab.domain.port.IncidentsPort.IncidentDraft;
 import com.thinklab.domain.repository.AlertRepository;
 import com.thinklab.domain.repository.AlertRuleRepository;
+import com.thinklab.domain.repository.MaintenanceWindowRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -25,6 +26,7 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.UUID;
 
@@ -50,6 +52,8 @@ class AlertEvaluatorTest {
     @Mock private HealthChecksPort health;
     @Mock private IncidentsPort incidents;
     @Mock private HashServicePort hashService;
+    @Mock private MaintenanceWindowRepository windows;
+    @Mock private NoticeDispatcher dispatcher;
 
     private final UUID org = UUID.randomUUID();
     private final UUID requester = UUID.randomUUID();
@@ -58,14 +62,18 @@ class AlertEvaluatorTest {
 
     @BeforeEach
     void setUp() {
-        evaluator = new AlertEvaluator(rules, alerts, health, incidents, hashService);
+        evaluator = new AlertEvaluator(rules, alerts, windows, health, incidents, hashService, dispatcher, Clock.systemUTC());
+        lenient().when(windows.findCurrent(any(), any())).thenReturn(Flux.empty());
+        lenient().when(alerts.findResolvedSince(any(), any())).thenReturn(Flux.empty());
+        lenient().when(alerts.saveIncidentLink(any(), any())).thenReturn(Mono.just(true));
+        lenient().when(dispatcher.deliver(any(), any(), any(), any())).thenReturn(Mono.just(0));
         lenient().when(alerts.save(any(), any(), any())).thenReturn(Mono.empty());
         lenient().when(alerts.create(any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
         lenient().when(hashService.generateSovereignId("alert-creation")).thenAnswer(call -> Mono.just(UUID.randomUUID()));
     }
 
     private AlertRule rule(String name, UUID checkId) {
-        return AlertRule.createNew(UUID.randomUUID(), org, name, checkId, Severity.HIGH, Severity.MEDIUM, requester, "op");
+        return AlertRule.createNew(UUID.randomUUID(), org, name, checkId, Severity.HIGH, Severity.MEDIUM, requester, AlertRule.Options.NONE, "op");
     }
 
     private ObservedCheck check(UUID id, String health, String status, String error) {
@@ -114,9 +122,10 @@ class AlertEvaluatorTest {
         assertEquals(requester, draft.getValue().requesterId());
         assertEquals(assetId, draft.getValue().assetId());
         ArgumentCaptor<Alert> saved = ArgumentCaptor.forClass(Alert.class);
-        verify(alerts).save(saved.capture(), eq(AlertStatus.OPEN), any());
+        verify(alerts).saveIncidentLink(saved.capture(), any());
         assertEquals(incident, saved.getValue().getIncidentId());
         assertEquals(checkId, saved.getValue().getCheckId());
+        assertEquals(saved.getValue().getId().toString(), draft.getValue().idempotencyKey());
     }
 
     @Test

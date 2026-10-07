@@ -46,7 +46,7 @@ class AlertingUseCasesTest {
     private final UUID requester = UUID.randomUUID();
 
     private AlertRule rule() {
-        return AlertRule.createNew(UUID.randomUUID(), org, "Production", null, Severity.HIGH, Severity.MEDIUM, requester, "op");
+        return AlertRule.createNew(UUID.randomUUID(), org, "Production", null, Severity.HIGH, Severity.MEDIUM, requester, AlertRule.Options.NONE, "op");
     }
 
     private Alert alert() {
@@ -61,7 +61,7 @@ class AlertingUseCasesTest {
         when(hashService.generateSovereignId("alert-rule-creation")).thenReturn(Mono.just(UUID.randomUUID()));
         when(rules.create(any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
         InitiateAlertRuleUseCase useCase = new InitiateAlertRuleUseCase(hashService, rules);
-        var request = new InitiateAlertRuleRequest("Production", null, Severity.HIGH, Severity.MEDIUM, requester);
+        var request = new InitiateAlertRuleRequest("Production", null, Severity.HIGH, Severity.MEDIUM, requester, null, null, null, null);
 
         StepVerifier.create(useCase.execute(org, request, "op", "AGENT")).assertNext(response -> {
             assertEquals("ACTIVE", response.status());
@@ -82,7 +82,7 @@ class AlertingUseCasesTest {
         UpdateAlertRuleUseCase update = new UpdateAlertRuleUseCase(workflow);
         ControlAlertRuleUseCase control = new ControlAlertRuleUseCase(workflow);
 
-        StepVerifier.create(update.execute(rule.getId(), org, new UpdateAlertRuleRequest("Renamed", null, Severity.LOW, Severity.LOW, requester), "op", "AGENT")).verifyComplete();
+        StepVerifier.create(update.execute(rule.getId(), org, new UpdateAlertRuleRequest("Renamed", null, Severity.LOW, Severity.LOW, requester, null, null, null, null), "op", "AGENT")).verifyComplete();
         assertEquals("Renamed", rule.getName());
         StepVerifier.create(control.execute(rule.getId(), org, ControlAlertRuleUseCase.Action.PAUSE, "op", null)).verifyComplete();
         assertEquals(RuleStatus.PAUSED, rule.getStatus());
@@ -148,7 +148,7 @@ class AlertingUseCasesTest {
     @Test
     @DisplayName("evaluating now runs the same evaluation as the scheduler, as the person who asked; a requester is refused")
     void evaluateNow() {
-        when(evaluator.evaluate(org, "op")).thenReturn(Mono.just(new EvaluationResponse(1, 2, 3)));
+        when(evaluator.evaluate(org, "op")).thenReturn(Mono.just(new EvaluationResponse(1, 2, 3, 0, 0)));
         EvaluateAlertsUseCase useCase = new EvaluateAlertsUseCase(evaluator);
 
         StepVerifier.create(useCase.execute(org, "op", "AGENT")).assertNext(r -> assertEquals("1/2/3", r.opened() + "/" + r.resolved() + "/" + r.incidentsOpened())).verifyComplete();

@@ -121,19 +121,19 @@ class AlertTest {
     void reconstitute() {
         UUID id = UUID.randomUUID();
         Instant at = Instant.parse("2026-10-06T10:00:00Z");
-        Alert full = Alert.reconstitute(id, org, id, id, "n", id, AlertStatus.RESOLVED, at, at, id, "timeout", "p", at, List.of(new AlertAuditEntry(at, "OPENED", "op", null, AlertStatus.OPEN, "d")));
+        Alert full = Alert.reconstitute(id, org, id, id, "n", id, AlertStatus.RESOLVED, at, at, id, "timeout", "p", at, 0, null, null, List.of(new AlertAuditEntry(at, "OPENED", "op", null, AlertStatus.OPEN, "d")));
         assertEquals(AlertStatus.RESOLVED, full.getStatus());
         assertEquals(1, full.getAuditTrail().size());
 
-        Alert bare = Alert.reconstitute(id, org, id, id, "n", null, null, null, null, null, null, null, null, null);
+        Alert bare = Alert.reconstitute(id, org, id, id, "n", null, null, null, null, null, null, null, null, 0, null, null, null);
         assertEquals(AlertStatus.OPEN, bare.getStatus());
         assertTrue(bare.getAuditTrail().isEmpty());
         assertEquals(bare.getOpenedAt(), bare.getUpdatedAt());
 
-        rejects(() -> Alert.reconstitute(null, org, id, id, "n", null, null, null, null, null, null, null, null, null));
-        rejects(() -> Alert.reconstitute(id, null, id, id, "n", null, null, null, null, null, null, null, null, null));
-        rejects(() -> Alert.reconstitute(id, org, null, id, "n", null, null, null, null, null, null, null, null, null));
-        rejects(() -> Alert.reconstitute(id, org, id, null, "n", null, null, null, null, null, null, null, null, null));
-        rejects(() -> Alert.reconstitute(id, org, id, id, null, null, null, null, null, null, null, null, null, null));
+        rejects(() -> Alert.reconstitute(null, org, id, id, "n", null, null, null, null, null, null, null, null, 0, null, null, null));
+        rejects(() -> Alert.reconstitute(id, null, id, id, "n", null, null, null, null, null, null, null, null, 0, null, null, null));
+        rejects(() -> Alert.reconstitute(id, org, null, id, "n", null, null, null, null, null, null, null, null, 0, null, null, null));
+        rejects(() -> Alert.reconstitute(id, org, id, null, "n", null, null, null, null, null, null, null, null, 0, null, null, null));
+        rejects(() -> Alert.reconstitute(id, org, id, id, null, null, null, null, null, null, null, null, null, 0, null, null, null));
     }
 }

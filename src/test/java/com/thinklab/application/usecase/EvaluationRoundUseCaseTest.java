@@ -44,9 +44,9 @@ class EvaluationRoundUseCaseTest {
         UUID failing = UUID.randomUUID();
         when(rules.activeTenants()).thenReturn(Flux.just(both, onlyRules, failing));
         when(alerts.openTenants()).thenReturn(Flux.just(both, onlyAlerts));
-        when(evaluator.evaluate(both, "system:alerting")).thenReturn(Mono.just(new EvaluationResponse(0, 0, 0)));
-        when(evaluator.evaluate(onlyRules, "system:alerting")).thenReturn(Mono.just(new EvaluationResponse(1, 0, 1)));
-        when(evaluator.evaluate(onlyAlerts, "system:alerting")).thenReturn(Mono.just(new EvaluationResponse(0, 1, 0)));
+        when(evaluator.evaluate(both, "system:alerting")).thenReturn(Mono.just(new EvaluationResponse(0, 0, 0, 0, 0)));
+        when(evaluator.evaluate(onlyRules, "system:alerting")).thenReturn(Mono.just(new EvaluationResponse(1, 0, 1, 0, 0)));
+        when(evaluator.evaluate(onlyAlerts, "system:alerting")).thenReturn(Mono.just(new EvaluationResponse(0, 1, 0, 0, 0)));
         when(evaluator.evaluate(failing, "system:alerting")).thenReturn(Mono.error(new UpstreamUnavailableException("The health monitor could not be read.")));
 
         StepVerifier.create(new EvaluationRoundUseCase(rules, alerts, evaluator, properties).execute()).expectNext(4L).verifyComplete();

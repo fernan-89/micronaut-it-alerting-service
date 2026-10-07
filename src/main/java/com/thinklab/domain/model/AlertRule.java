@@ -23,12 +23,13 @@ public class AlertRule {
     private Severity impact;
     private Severity urgency;
     private UUID requesterId;
+    private Options options;
     private RuleStatus status;
     private final Instant createdAt;
     private Instant updatedAt;
     private final List<RuleAuditEntry> auditTrail;
 
-    private AlertRule(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, String executor) {
+    private AlertRule(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, String executor) {
         this.id = id;
         this.organisationId = organisationId;
         this.name = name;
@@ -36,6 +37,7 @@ public class AlertRule {
         this.impact = impact;
         this.urgency = urgency;
         this.requesterId = requesterId;
+        this.options = options;
         this.status = RuleStatus.ACTIVE;
         this.createdAt = Instant.now();
         this.updatedAt = this.createdAt;
@@ -43,7 +45,7 @@ public class AlertRule {
         this.auditTrail.add(new RuleAuditEntry(this.createdAt, "INITIATED", executor, null, RuleStatus.ACTIVE, checkId == null ? "Rule for every check of the tenant." : "Rule for one check."));
     }
 
-    private AlertRule(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, RuleStatus status,
+    private AlertRule(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, RuleStatus status,
                       Instant createdAt, Instant updatedAt, List<RuleAuditEntry> auditTrail) {
         this.id = id;
         this.organisationId = organisationId;
@@ -52,40 +54,42 @@ public class AlertRule {
         this.impact = impact;
         this.urgency = urgency;
         this.requesterId = requesterId;
+        this.options = options != null ? options : Options.NONE;
         this.status = status != null ? status : RuleStatus.ACTIVE;
         this.createdAt = createdAt != null ? createdAt : Instant.now();
         this.updatedAt = updatedAt != null ? updatedAt : this.createdAt;
         this.auditTrail = auditTrail != null ? new ArrayList<>(auditTrail) : new ArrayList<>();
     }
 
-    public static AlertRule createNew(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, String executor) {
+    public static AlertRule createNew(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, String executor) {
         if (id == null || organisationId == null) {
             throw new IllegalArgumentException("ID and Organisation ID are mandatory for AlertRule creation.");
         }
-        validate(name, impact, urgency, requesterId);
+        validate(name, impact, urgency, requesterId, options);
         requireExecutor(executor);
-        return new AlertRule(id, organisationId, name, checkId, impact, urgency, requesterId, executor);
+        return new AlertRule(id, organisationId, name, checkId, impact, urgency, requesterId, options, executor);
     }
 
-    public static AlertRule reconstitute(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, RuleStatus status,
+    public static AlertRule reconstitute(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, RuleStatus status,
                                          Instant createdAt, Instant updatedAt, List<RuleAuditEntry> auditTrail) {
         if (id == null || organisationId == null || name == null || impact == null || urgency == null || requesterId == null) {
             throw new IllegalArgumentException("ID, Organisation ID, Name, Impact, Urgency and Requester are mandatory to reconstitute an AlertRule.");
         }
-        return new AlertRule(id, organisationId, name, checkId, impact, urgency, requesterId, status, createdAt, updatedAt, auditTrail);
+        return new AlertRule(id, organisationId, name, checkId, impact, urgency, requesterId, options, status, createdAt, updatedAt, auditTrail);
     }
 
     // --- Domain Behaviors ---
 
     /** Behavior Qualifier: {@code rule/update}. Everything, in any status. */
-    public RuleAuditEntry update(String newName, UUID newCheckId, Severity newImpact, Severity newUrgency, UUID newRequesterId, String executor) {
-        validate(newName, newImpact, newUrgency, newRequesterId);
+    public RuleAuditEntry update(String newName, UUID newCheckId, Severity newImpact, Severity newUrgency, UUID newRequesterId, Options newOptions, String executor) {
+        validate(newName, newImpact, newUrgency, newRequesterId, newOptions);
         requireExecutor(executor);
         this.name = newName;
         this.checkId = newCheckId;
         this.impact = newImpact;
         this.urgency = newUrgency;
         this.requesterId = newRequesterId;
+        this.options = newOptions;
         return record("UPDATED", executor, this.status, this.status, "Rule updated.");
     }
 
@@ -131,7 +135,7 @@ public class AlertRule {
         }
     }
 
-    private static void validate(String name, Severity impact, Severity urgency, UUID requesterId) {
+    private static void validate(String name, Severity impact, Severity urgency, UUID requesterId, Options options) {
         if (name == null || name.isBlank() || name.length() > 80) {
             throw new IllegalArgumentException("Name is mandatory for an AlertRule (up to 80 characters).");
         }
@@ -141,6 +145,10 @@ public class AlertRule {
         if (requesterId == null) {
             throw new IllegalArgumentException("The person the incident is filed for is mandatory.");
         }
+        if (options == null) {
+            throw new IllegalArgumentException("The options of the rule are mandatory (use none for the defaults).");
+        }
+        options.validate();
     }
 
     // --- Getters ---
@@ -152,6 +160,7 @@ public class AlertRule {
     public Severity getImpact() { return impact; }
     public Severity getUrgency() { return urgency; }
     public UUID getRequesterId() { return requesterId; }
+    public Options getOptions() { return options; }
     public RuleStatus getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
@@ -165,4 +174,43 @@ public class AlertRule {
     public enum RuleStatus { ACTIVE, PAUSED }
 
     public record RuleAuditEntry(Instant occurredAt, String action, String executor, RuleStatus fromStatus, RuleStatus toStatus, String detail) {}
+
+    /**
+     * What a rule does besides opening an incident. The two targets are the NAMES of environment variables that hold a webhook address (never
+     * the address, and only names that start with {@code THINKLAB_ALERT_HOOK_}): so no address or secret is stored, shown or audited.
+     * {@code escalateAfterMinutes} is how long an incident may stay unacknowledged before the escalation target is told; {@code reopenWithinMinutes}
+     * is how soon after a resolution the same check going down again reopens that alert instead of opening a new one (0 = never).
+     */
+    public record Options(String notifyTarget, String escalateTarget, Integer escalateAfterMinutes, int reopenWithinMinutes) {
+
+        public static final Options NONE = new Options(null, null, null, 0);
+        public static final int MAX_MINUTES = 1440;
+        public static final int DEFAULT_REOPEN_MINUTES = 30;
+        private static final String TARGET_PATTERN = "THINKLAB_ALERT_HOOK_[A-Z0-9_]{1,40}";
+
+        /** The options a request asked for; a reopen time left out is the default. */
+        public static Options of(String notifyTarget, String escalateTarget, Integer escalateAfterMinutes, Integer reopenWithinMinutes) {
+            return new Options(notifyTarget, escalateTarget, escalateAfterMinutes, reopenWithinMinutes != null ? reopenWithinMinutes : DEFAULT_REOPEN_MINUTES);
+        }
+
+        void validate() {
+            requireTarget(notifyTarget, "notify");
+            requireTarget(escalateTarget, "escalation");
+            if (escalateTarget == null && escalateAfterMinutes != null) {
+                throw new IllegalArgumentException("An escalation time needs an escalation target.");
+            }
+            if (escalateTarget != null && (escalateAfterMinutes == null || escalateAfterMinutes < 1 || escalateAfterMinutes > MAX_MINUTES)) {
+                throw new IllegalArgumentException("The escalation time must be between 1 and " + MAX_MINUTES + " minutes.");
+            }
+            if (reopenWithinMinutes < 0 || reopenWithinMinutes > MAX_MINUTES) {
+                throw new IllegalArgumentException("The reopen time must be between 0 and " + MAX_MINUTES + " minutes.");
+            }
+        }
+
+        private static void requireTarget(String target, String what) {
+            if (target != null && !target.matches(TARGET_PATTERN)) {
+                throw new IllegalArgumentException("The " + what + " target must name an environment variable that starts with THINKLAB_ALERT_HOOK_.");
+            }
+        }
+    }
 }

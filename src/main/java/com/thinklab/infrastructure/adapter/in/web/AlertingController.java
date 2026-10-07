@@ -1,20 +1,27 @@
 package com.thinklab.infrastructure.adapter.in.web;
 
 import com.thinklab.application.dto.request.InitiateAlertRuleRequest;
+import com.thinklab.application.dto.request.InitiateMaintenanceWindowRequest;
 import com.thinklab.application.dto.request.UpdateAlertRuleRequest;
 import com.thinklab.application.dto.response.AlertResponse;
 import com.thinklab.application.dto.response.AlertRuleResponse;
 import com.thinklab.application.dto.response.AuditEntryResponse;
 import com.thinklab.application.dto.response.EvaluationResponse;
+import com.thinklab.application.dto.response.MaintenanceWindowResponse;
+import com.thinklab.application.usecase.CancelMaintenanceWindowUseCase;
 import com.thinklab.application.usecase.ControlAlertRuleUseCase;
 import com.thinklab.application.usecase.EvaluateAlertsUseCase;
 import com.thinklab.application.usecase.InitiateAlertRuleUseCase;
+import com.thinklab.application.usecase.InitiateMaintenanceWindowUseCase;
 import com.thinklab.application.usecase.RetrieveAlertAuditLogUseCase;
 import com.thinklab.application.usecase.RetrieveAlertRuleAuditLogUseCase;
 import com.thinklab.application.usecase.RetrieveAlertRuleUseCase;
 import com.thinklab.application.usecase.RetrieveAlertRulesUseCase;
 import com.thinklab.application.usecase.RetrieveAlertUseCase;
 import com.thinklab.application.usecase.RetrieveAlertsUseCase;
+import com.thinklab.application.usecase.RetrieveMaintenanceWindowAuditLogUseCase;
+import com.thinklab.application.usecase.RetrieveMaintenanceWindowUseCase;
+import com.thinklab.application.usecase.RetrieveMaintenanceWindowsUseCase;
 import com.thinklab.application.usecase.UpdateAlertRuleUseCase;
 import com.thinklab.domain.model.Alert.AlertStatus;
 import com.thinklab.domain.repository.AlertRepository;
@@ -65,11 +72,17 @@ public class AlertingController {
     private final RetrieveAlertsUseCase retrieveAlerts;
     private final RetrieveAlertAuditLogUseCase alertAuditLog;
     private final EvaluateAlertsUseCase evaluate;
+    private final InitiateMaintenanceWindowUseCase initiateWindow;
+    private final RetrieveMaintenanceWindowUseCase retrieveWindow;
+    private final RetrieveMaintenanceWindowsUseCase retrieveWindows;
+    private final CancelMaintenanceWindowUseCase cancelWindow;
+    private final RetrieveMaintenanceWindowAuditLogUseCase windowAuditLog;
 
     public AlertingController(InitiateAlertRuleUseCase initiateRule, RetrieveAlertRuleUseCase retrieveRule, RetrieveAlertRulesUseCase retrieveRules,
                               UpdateAlertRuleUseCase updateRule, ControlAlertRuleUseCase controlRule, RetrieveAlertRuleAuditLogUseCase ruleAuditLog,
                               RetrieveAlertUseCase retrieveAlert, RetrieveAlertsUseCase retrieveAlerts, RetrieveAlertAuditLogUseCase alertAuditLog,
-                              EvaluateAlertsUseCase evaluate) {
+                              EvaluateAlertsUseCase evaluate, InitiateMaintenanceWindowUseCase initiateWindow, RetrieveMaintenanceWindowUseCase retrieveWindow,
+                              RetrieveMaintenanceWindowsUseCase retrieveWindows, CancelMaintenanceWindowUseCase cancelWindow, RetrieveMaintenanceWindowAuditLogUseCase windowAuditLog) {
         this.initiateRule = initiateRule;
         this.retrieveRule = retrieveRule;
         this.retrieveRules = retrieveRules;
@@ -80,6 +93,11 @@ public class AlertingController {
         this.retrieveAlerts = retrieveAlerts;
         this.alertAuditLog = alertAuditLog;
         this.evaluate = evaluate;
+        this.initiateWindow = initiateWindow;
+        this.retrieveWindow = retrieveWindow;
+        this.retrieveWindows = retrieveWindows;
+        this.cancelWindow = cancelWindow;
+        this.windowAuditLog = windowAuditLog;
     }
 
     // ------------------------------------------------------------------ Rules
@@ -134,6 +152,46 @@ public class AlertingController {
     @Get("/rule/{id}/audit-log/retrieve")
     public Mono<List<AuditEntryResponse>> ruleAuditLog(@PathVariable UUID id, @Header(TENANT_HEADER) @NotBlank String tenantId, @Header(ROLE_HEADER) @Nullable String role) {
         return Mono.defer(() -> ruleAuditLog.execute(id, UUID.fromString(tenantId), role));
+    }
+
+    // ------------------------------------------------------------------ Maintenance windows
+
+    /** Behavior Qualifier: {@code window/initiate}. A planned silence: no alert is opened or reopened and nobody is told for the check (or every check) meanwhile. */
+    @Post("/window/initiate")
+    public Mono<HttpResponse<MaintenanceWindowResponse>> initiateWindow(
+            @Header(TENANT_HEADER) @NotBlank String tenantId, @Header(EXECUTOR_HEADER) @NotBlank String executor,
+            @Header(ROLE_HEADER) @Nullable String role, @Body @Valid InitiateMaintenanceWindowRequest request
+    ) {
+        log.info("[ACTION: INITIATE_MAINTENANCE_WINDOW] [EXECUTOR: {}] Received request for organisation: {}", executor, tenantId);
+
+        return initiateWindow.execute(UUID.fromString(tenantId), request, executor, role).map(HttpResponse::created);
+    }
+
+    /** Behavior Qualifier: {@code window/retrieve}. One window of the tenant. */
+    @Get("/window/{id}/retrieve")
+    public Mono<HttpResponse<MaintenanceWindowResponse>> retrieveWindow(@PathVariable UUID id, @Header(TENANT_HEADER) @NotBlank String tenantId, @Header(ROLE_HEADER) @Nullable String role) {
+        return Mono.defer(() -> retrieveWindow.execute(id, UUID.fromString(tenantId), role)).map(HttpResponse::ok);
+    }
+
+    /** Behavior Qualifier: {@code window/retrieve} (collection), newest start first. */
+    @Get("/window/retrieve")
+    public Mono<List<MaintenanceWindowResponse>> retrieveWindows(@Header(TENANT_HEADER) @NotBlank String tenantId, @Header(ROLE_HEADER) @Nullable String role) {
+        return Mono.defer(() -> retrieveWindows.execute(UUID.fromString(tenantId), role).collectList());
+    }
+
+    /** Behavior Qualifier: {@code window/control/cancel}. ACTIVE -&gt; CANCELLED: the silence stops at once. */
+    @Put("/window/{id}/control/cancel")
+    public Mono<HttpResponse<Void>> cancelWindow(@PathVariable UUID id, @Header(TENANT_HEADER) @NotBlank String tenantId,
+                                                 @Header(EXECUTOR_HEADER) @NotBlank String executor, @Header(ROLE_HEADER) @Nullable String role) {
+        log.info("[ACTION: CANCEL_MAINTENANCE_WINDOW] [EXECUTOR: {}] for ID: {}", executor, id);
+
+        return Mono.defer(() -> cancelWindow.execute(id, UUID.fromString(tenantId), executor, role)).thenReturn(HttpResponse.noContent());
+    }
+
+    /** Behavior Qualifier: {@code window/audit-log/retrieve}. */
+    @Get("/window/{id}/audit-log/retrieve")
+    public Mono<List<AuditEntryResponse>> windowAuditLog(@PathVariable UUID id, @Header(TENANT_HEADER) @NotBlank String tenantId, @Header(ROLE_HEADER) @Nullable String role) {
+        return Mono.defer(() -> windowAuditLog.execute(id, UUID.fromString(tenantId), role));
     }
 
     // ------------------------------------------------------------------ Alerts

@@ -1,6 +1,7 @@
 package com.thinklab.application.usecase;
 
 import com.thinklab.application.dto.request.UpdateAlertRuleRequest;
+import com.thinklab.domain.model.AlertRule;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +25,7 @@ public class UpdateAlertRuleUseCase {
         log.info("[USE CASE] Updating AlertRule ID: {}", id);
 
         return workflow.apply(id, organisationId, role, "change an alert rule",
-                rule -> rule.update(request.name(), request.checkId(), request.impact(), request.urgency(), request.requesterId(), executor));
+                rule -> rule.update(request.name(), request.checkId(), request.impact(), request.urgency(), request.requesterId(),
+                        AlertRule.Options.of(request.notifyTarget(), request.escalateTarget(), request.escalateAfterMinutes(), request.reopenWithinMinutes()), executor));
     }
 }

@@ -5,12 +5,14 @@ import com.thinklab.domain.exception.InvalidAlertStatusException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * Aggregate Root (BIAN Control Record) of the IT Alerting Service Domain: one outage of one health check. It is OPEN from the moment the
- * check is seen DOWN until it is seen UP, then RESOLVED (terminal); the next outage of the same check is a new alert (ADR-030). At most one
+ * check is seen DOWN until it is seen UP, then RESOLVED; the same check going down again soon after (the rule says how soon) REOPENS it, and a later outage is a new alert (ADR-030). At most one
  * alert is OPEN per check, which a partial unique index guarantees whatever the number of instances, and it is saved BEFORE the incident is
  * opened: whoever wins the insert opens the incident, and an alert that has no incident yet (the incident service was down) is retried
  * every round. What is kept of the check is its id, its name, its asset and the fixed-vocabulary error: never anything the target said.
@@ -32,6 +34,9 @@ public class Alert {
     private String lastError;
     private String problem;
     private Instant updatedAt;
+    private int reopenCount;
+    private Instant reopenedAt;
+    private final Map<String, Notice> notices;
     private final List<AlertAuditEntry> auditTrail;
 
     private Alert(UUID id, UUID organisationId, UUID ruleId, UUID checkId, String checkName, UUID assetId, String error, String executor) {
@@ -45,12 +50,14 @@ public class Alert {
         this.status = AlertStatus.OPEN;
         this.openedAt = Instant.now();
         this.updatedAt = this.openedAt;
+        this.notices = new HashMap<>();
         this.auditTrail = new ArrayList<>();
         this.auditTrail.add(new AlertAuditEntry(this.openedAt, "OPENED", executor, null, AlertStatus.OPEN, "Check " + checkName + " is down" + (error != null ? ": " + error : "") + "."));
     }
 
     private Alert(UUID id, UUID organisationId, UUID ruleId, UUID checkId, String checkName, UUID assetId, AlertStatus status, Instant openedAt, Instant resolvedAt,
-                  UUID incidentId, String lastError, String problem, Instant updatedAt, List<AlertAuditEntry> auditTrail) {
+                  UUID incidentId, String lastError, String problem, Instant updatedAt, int reopenCount, Instant reopenedAt, Map<String, Notice> notices,
+                  List<AlertAuditEntry> auditTrail) {
         this.id = id;
         this.organisationId = organisationId;
         this.ruleId = ruleId;
@@ -64,6 +71,9 @@ public class Alert {
         this.lastError = lastError;
         this.problem = problem;
         this.updatedAt = updatedAt != null ? updatedAt : this.openedAt;
+        this.reopenCount = reopenCount;
+        this.reopenedAt = reopenedAt;
+        this.notices = notices != null ? new HashMap<>(notices) : new HashMap<>();
         this.auditTrail = auditTrail != null ? new ArrayList<>(auditTrail) : new ArrayList<>();
     }
 
@@ -79,11 +89,12 @@ public class Alert {
     }
 
     public static Alert reconstitute(UUID id, UUID organisationId, UUID ruleId, UUID checkId, String checkName, UUID assetId, AlertStatus status, Instant openedAt,
-                                     Instant resolvedAt, UUID incidentId, String lastError, String problem, Instant updatedAt, List<AlertAuditEntry> auditTrail) {
+                                     Instant resolvedAt, UUID incidentId, String lastError, String problem, Instant updatedAt, int reopenCount, Instant reopenedAt,
+                                     Map<String, Notice> notices, List<AlertAuditEntry> auditTrail) {
         if (id == null || organisationId == null || ruleId == null || checkId == null || checkName == null) {
             throw new IllegalArgumentException("ID, Organisation ID, Rule ID, Check ID and Check name are mandatory to reconstitute an Alert.");
         }
-        return new Alert(id, organisationId, ruleId, checkId, checkName, assetId, status, openedAt, resolvedAt, incidentId, lastError, problem, updatedAt, auditTrail);
+        return new Alert(id, organisationId, ruleId, checkId, checkName, assetId, status, openedAt, resolvedAt, incidentId, lastError, problem, updatedAt, reopenCount, reopenedAt, notices, auditTrail);
     }
 
     // --- Domain Behaviors ---
@@ -117,6 +128,35 @@ public class Alert {
         AlertAuditEntry entry = new AlertAuditEntry(this.updatedAt, "RESOLVED", executor, AlertStatus.OPEN, AlertStatus.RESOLVED, "Check " + checkName + " is answering again.");
         this.auditTrail.add(entry);
         return entry;
+    }
+
+    /** The same check is down again soon after the resolution: RESOLVED -&gt; OPEN, the same alert and the same incident (ADR-034). */
+    public AlertAuditEntry reopen(String executor) {
+        requireStatus(AlertStatus.RESOLVED);
+        requireExecutor(executor);
+        this.status = AlertStatus.OPEN;
+        this.resolvedAt = null;
+        this.reopenCount++;
+        this.reopenedAt = Instant.now();
+        this.updatedAt = this.reopenedAt;
+        AlertAuditEntry entry = new AlertAuditEntry(this.updatedAt, "REOPENED", executor, AlertStatus.RESOLVED, AlertStatus.OPEN, "Check " + checkName + " is down again (reopened " + reopenCount + " time(s)).");
+        this.auditTrail.add(entry);
+        return entry;
+    }
+
+    /** When this outage began: the opening, or the last reopening. */
+    public Instant activeSince() {
+        return reopenedAt != null ? reopenedAt : openedAt;
+    }
+
+    /** The key of a notice for this cycle of the outage: the opening and each reopening are cycles of their own. */
+    public String noticeKey(String event) {
+        return event + "_" + reopenCount;
+    }
+
+    /** What is known of a notice (never null: a notice nobody tried yet has no attempts). */
+    public Notice notice(String event) {
+        return notices.getOrDefault(noticeKey(event), Notice.NONE);
     }
 
     // --- Internal helpers ---
@@ -156,6 +196,9 @@ public class Alert {
     public String getLastError() { return lastError; }
     public String getProblem() { return problem; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public int getReopenCount() { return reopenCount; }
+    public Instant getReopenedAt() { return reopenedAt; }
+    public Map<String, Notice> getNotices() { return Collections.unmodifiableMap(notices); }
     public List<AlertAuditEntry> getAuditTrail() { return Collections.unmodifiableList(auditTrail); }
 
     // --- Nested Value Objects ---
@@ -163,4 +206,9 @@ public class Alert {
     public enum AlertStatus { OPEN, RESOLVED }
 
     public record AlertAuditEntry(Instant occurredAt, String action, String executor, AlertStatus fromStatus, AlertStatus toStatus, String detail) {}
+
+    /** The state of one notice to a webhook: how many times it was tried, when last, when it got through and the fixed reason it did not. */
+    public record Notice(int attempts, Instant lastAttemptAt, Instant sentAt, String lastError) {
+        public static final Notice NONE = new Notice(0, null, null, null);
+    }
 }

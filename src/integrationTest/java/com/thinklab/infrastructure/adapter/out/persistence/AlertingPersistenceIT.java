@@ -53,7 +53,7 @@ class AlertingPersistenceIT implements TestPropertyProvider {
     @Inject MongoClient mongoClient;
 
     private AlertRule newRule(UUID organisation, String name, UUID checkId) {
-        return AlertRule.createNew(UUID.randomUUID(), organisation, name, checkId, Severity.HIGH, Severity.MEDIUM, UUID.randomUUID(), "op-1");
+        return AlertRule.createNew(UUID.randomUUID(), organisation, name, checkId, Severity.HIGH, Severity.MEDIUM, UUID.randomUUID(), AlertRule.Options.NONE, "op-1");
     }
 
     private Alert newAlert(UUID organisation, UUID checkId) {
@@ -91,7 +91,7 @@ class AlertingPersistenceIT implements TestPropertyProvider {
         rules.create(newRule(UUID.randomUUID(), "Same", null)).block();
         AlertRule other = rules.create(newRule(organisation, "Other", null)).block();
         AlertRule loaded = rules.findById(other.getId(), organisation).block();
-        var entry = loaded.update("Same", null, Severity.LOW, Severity.LOW, loaded.getRequesterId(), "op-1");
+        var entry = loaded.update("Same", null, Severity.LOW, Severity.LOW, loaded.getRequesterId(), AlertRule.Options.NONE, "op-1");
 
         assertThrows(DuplicateAlertRuleException.class, () -> rules.save(loaded, RuleStatus.ACTIVE, entry).block());
     }

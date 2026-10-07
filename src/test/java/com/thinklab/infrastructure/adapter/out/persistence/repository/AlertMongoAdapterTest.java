@@ -172,7 +172,7 @@ class AlertMongoAdapterTest {
         ArgumentCaptor<Bson> update = ArgumentCaptor.forClass(Bson.class);
         verify(alerts, times(2)).updateOne(guard.capture(), update.capture());
         assertTrue(guard.getAllValues().get(0).toString().contains("OPEN") && guard.getAllValues().get(0).toString().contains("organisationId"));
-        assertTrue(update.getAllValues().get(0).toString().contains("auditTrail") && update.getAllValues().get(0).toString().contains("incidentId"));
+        assertTrue(update.getAllValues().get(0).toString().contains("auditTrail") && update.getAllValues().get(0).toString().contains("reopenCount") && !update.getAllValues().get(0).toString().contains("incidentId"));
     }
 
     @Test

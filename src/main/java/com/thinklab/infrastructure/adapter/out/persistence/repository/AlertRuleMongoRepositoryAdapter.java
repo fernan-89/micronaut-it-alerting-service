@@ -95,6 +95,10 @@ public class AlertRuleMongoRepositoryAdapter implements AlertRuleRepository {
                 Updates.set("impact", rule.getImpact().name()),
                 Updates.set("urgency", rule.getUrgency().name()),
                 Updates.set("requesterId", rule.getRequesterId()),
+                Updates.set("notifyTarget", rule.getOptions().notifyTarget()),
+                Updates.set("escalateTarget", rule.getOptions().escalateTarget()),
+                Updates.set("escalateAfterMinutes", rule.getOptions().escalateAfterMinutes()),
+                Updates.set("reopenWithinMinutes", rule.getOptions().reopenWithinMinutes()),
                 Updates.set(FIELD_STATUS, rule.getStatus().name()),
                 Updates.set("updatedAt", Instant.now()),
                 Updates.push("auditTrail", AuditEntryDocument.fromDomain(auditEntry))

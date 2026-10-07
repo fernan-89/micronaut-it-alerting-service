@@ -3,12 +3,15 @@ package com.thinklab.infrastructure.adapter.out.persistence.entity;
 import com.thinklab.domain.model.Alert;
 import com.thinklab.domain.model.Alert.AlertAuditEntry;
 import com.thinklab.domain.model.Alert.AlertStatus;
+import com.thinklab.domain.model.Alert.Notice;
 import io.micronaut.core.annotation.Introspected;
 import org.bson.codecs.pojo.annotations.BsonId;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -31,6 +34,9 @@ public class AlertDocument {
     private String lastError;
     private String problem;
     private Instant updatedAt;
+    private int reopenCount;
+    private Instant reopenedAt;
+    private Map<String, NoticeDocument> notices = new HashMap<>();
     private List<AuditEntryDocument> auditTrail = new ArrayList<>();
 
     public UUID getId() { return id; }
@@ -59,8 +65,26 @@ public class AlertDocument {
     public void setProblem(String problem) { this.problem = problem; }
     public Instant getUpdatedAt() { return updatedAt; }
     public void setUpdatedAt(Instant updatedAt) { this.updatedAt = updatedAt; }
+    public int getReopenCount() { return reopenCount; }
+    public void setReopenCount(int reopenCount) { this.reopenCount = reopenCount; }
+    public Instant getReopenedAt() { return reopenedAt; }
+    public void setReopenedAt(Instant reopenedAt) { this.reopenedAt = reopenedAt; }
+    public Map<String, NoticeDocument> getNotices() { return notices; }
+    public void setNotices(Map<String, NoticeDocument> notices) { this.notices = notices; }
     public List<AuditEntryDocument> getAuditTrail() { return auditTrail; }
     public void setAuditTrail(List<AuditEntryDocument> auditTrail) { this.auditTrail = auditTrail; }
+
+    @Introspected
+    public record NoticeDocument(int attempts, Instant lastAttemptAt, Instant sentAt, String lastError) {
+
+        static NoticeDocument fromDomain(Notice notice) {
+            return new NoticeDocument(notice.attempts(), notice.lastAttemptAt(), notice.sentAt(), notice.lastError());
+        }
+
+        Notice toDomain() {
+            return new Notice(attempts, lastAttemptAt, sentAt, lastError);
+        }
+    }
 
     @Introspected
     public record AuditEntryDocument(Instant occurredAt, String action, String executor, String fromStatus, String toStatus, String detail) {
@@ -95,6 +119,9 @@ public class AlertDocument {
             doc.setLastError(alert.getLastError());
             doc.setProblem(alert.getProblem());
             doc.setUpdatedAt(alert.getUpdatedAt());
+            doc.setReopenCount(alert.getReopenCount());
+            doc.setReopenedAt(alert.getReopenedAt());
+            doc.setNotices(alert.getNotices().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> NoticeDocument.fromDomain(entry.getValue()))));
             doc.setAuditTrail(alert.getAuditTrail().stream().map(AuditEntryDocument::fromDomain).collect(Collectors.toCollection(ArrayList::new)));
             return doc;
         }
@@ -102,6 +129,8 @@ public class AlertDocument {
         public static Alert toDomain(AlertDocument doc) {
             return Alert.reconstitute(doc.getId(), doc.getOrganisationId(), doc.getRuleId(), doc.getCheckId(), doc.getCheckName(), doc.getAssetId(), AlertStatus.valueOf(doc.getStatus()),
                     doc.getOpenedAt(), doc.getResolvedAt(), doc.getIncidentId(), doc.getLastError(), doc.getProblem(), doc.getUpdatedAt(),
+                    doc.getReopenCount(), doc.getReopenedAt(),
+                    doc.getNotices().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().toDomain())),
                     doc.getAuditTrail().stream().map(AuditEntryDocument::toDomain).collect(Collectors.toList()));
         }
     }

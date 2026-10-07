@@ -42,9 +42,9 @@ class IncidentServiceAdapterTest {
         UUID asset = UUID.randomUUID();
         when(client.open(eq(tenant.toString()), eq("system:alerting"), any())).thenReturn(Mono.just(new IncidentApiResponse(incident)));
 
-        StepVerifier.create(adapter.open(tenant, new IncidentDraft("Health check down: Intranet", "d", Severity.HIGH, Severity.LOW, requester, asset)))
+        StepVerifier.create(adapter.open(tenant, new IncidentDraft("Health check down: Intranet", "d", Severity.HIGH, Severity.LOW, requester, asset, "alert-1")))
                 .expectNext(incident).verifyComplete();
-        StepVerifier.create(adapter.open(tenant, new IncidentDraft("t", "d", Severity.LOW, Severity.LOW, requester, null)))
+        StepVerifier.create(adapter.open(tenant, new IncidentDraft("t", "d", Severity.LOW, Severity.LOW, requester, null, "alert-1")))
                 .expectNext(incident).verifyComplete();
 
         ArgumentCaptor<OpenIncidentApiRequest> body = ArgumentCaptor.forClass(OpenIncidentApiRequest.class);
@@ -74,7 +74,7 @@ class IncidentServiceAdapterTest {
         when(client.open(any(), any(), any())).thenReturn(Mono.error(new HttpClientResponseException("boom secret detail", refused)));
         when(client.comment(any(), any(), any(), any())).thenReturn(Mono.error(new IllegalStateException("connect refused secret detail")));
 
-        StepVerifier.create(adapter.open(tenant, new IncidentDraft("t", "d", Severity.LOW, Severity.LOW, requester, null))).expectErrorSatisfies(error -> {
+        StepVerifier.create(adapter.open(tenant, new IncidentDraft("t", "d", Severity.LOW, Severity.LOW, requester, null, "alert-1"))).expectErrorSatisfies(error -> {
             assertTrue(error instanceof UpstreamUnavailableException);
             assertEquals("The incident service did not accept the incident to be opened (HTTP 502).", error.getMessage());
         }).verify();

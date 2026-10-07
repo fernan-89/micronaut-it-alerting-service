@@ -26,6 +26,10 @@ public class AlertRuleDocument {
     private String impact;
     private String urgency;
     private UUID requesterId;
+    private String notifyTarget;
+    private String escalateTarget;
+    private Integer escalateAfterMinutes;
+    private int reopenWithinMinutes;
     private String status;
     private Instant createdAt;
     private Instant updatedAt;
@@ -45,6 +49,14 @@ public class AlertRuleDocument {
     public void setUrgency(String urgency) { this.urgency = urgency; }
     public UUID getRequesterId() { return requesterId; }
     public void setRequesterId(UUID requesterId) { this.requesterId = requesterId; }
+    public String getNotifyTarget() { return notifyTarget; }
+    public void setNotifyTarget(String notifyTarget) { this.notifyTarget = notifyTarget; }
+    public String getEscalateTarget() { return escalateTarget; }
+    public void setEscalateTarget(String escalateTarget) { this.escalateTarget = escalateTarget; }
+    public Integer getEscalateAfterMinutes() { return escalateAfterMinutes; }
+    public void setEscalateAfterMinutes(Integer escalateAfterMinutes) { this.escalateAfterMinutes = escalateAfterMinutes; }
+    public int getReopenWithinMinutes() { return reopenWithinMinutes; }
+    public void setReopenWithinMinutes(int reopenWithinMinutes) { this.reopenWithinMinutes = reopenWithinMinutes; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
@@ -81,6 +93,10 @@ public class AlertRuleDocument {
             doc.setImpact(rule.getImpact().name());
             doc.setUrgency(rule.getUrgency().name());
             doc.setRequesterId(rule.getRequesterId());
+            doc.setNotifyTarget(rule.getOptions().notifyTarget());
+            doc.setEscalateTarget(rule.getOptions().escalateTarget());
+            doc.setEscalateAfterMinutes(rule.getOptions().escalateAfterMinutes());
+            doc.setReopenWithinMinutes(rule.getOptions().reopenWithinMinutes());
             doc.setStatus(rule.getStatus().name());
             doc.setCreatedAt(rule.getCreatedAt());
             doc.setUpdatedAt(rule.getUpdatedAt());
@@ -90,7 +106,8 @@ public class AlertRuleDocument {
 
         public static AlertRule toDomain(AlertRuleDocument doc) {
             return AlertRule.reconstitute(doc.getId(), doc.getOrganisationId(), doc.getName(), doc.getCheckId(), Severity.valueOf(doc.getImpact()), Severity.valueOf(doc.getUrgency()),
-                    doc.getRequesterId(), RuleStatus.valueOf(doc.getStatus()), doc.getCreatedAt(), doc.getUpdatedAt(),
+                    doc.getRequesterId(),
+                    new AlertRule.Options(doc.getNotifyTarget(), doc.getEscalateTarget(), doc.getEscalateAfterMinutes(), doc.getReopenWithinMinutes()), RuleStatus.valueOf(doc.getStatus()), doc.getCreatedAt(), doc.getUpdatedAt(),
                     doc.getAuditTrail().stream().map(AuditEntryDocument::toDomain).collect(Collectors.toList()));
         }
     }

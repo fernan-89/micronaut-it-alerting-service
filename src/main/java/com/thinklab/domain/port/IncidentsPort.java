@@ -14,6 +14,10 @@ public interface IncidentsPort {
     /** Adds an INTERNAL note: a person reading the incident sees it, a requester never does. */
     Mono<Void> comment(UUID organisationId, UUID incidentId, String text);
 
-    record IncidentDraft(String title, String description, Severity impact, Severity urgency, UUID requesterId, UUID assetId) {
+    /** The status of the incident (NEW, ACKNOWLEDGED, IN_PROGRESS, ON_HOLD, RESOLVED, CLOSED, CANCELLED...), to know whether it is still being worked. */
+    Mono<String> status(UUID organisationId, UUID incidentId);
+
+    /** {@code idempotencyKey} names the thing the incident is for (the alert id): opening twice under it gives the one incident (incident ADR-034). */
+    record IncidentDraft(String title, String description, Severity impact, Severity urgency, UUID requesterId, UUID assetId, String idempotencyKey) {
     }
 }

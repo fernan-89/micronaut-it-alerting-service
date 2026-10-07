@@ -66,7 +66,7 @@ class AlertRuleMongoAdapterTest {
     }
 
     private AlertRule rule() {
-        AlertRule rule = AlertRule.createNew(UUID.randomUUID(), org, "Production", UUID.randomUUID(), Severity.HIGH, Severity.MEDIUM, UUID.randomUUID(), "op");
+        AlertRule rule = AlertRule.createNew(UUID.randomUUID(), org, "Production", UUID.randomUUID(), Severity.HIGH, Severity.MEDIUM, UUID.randomUUID(), AlertRule.Options.NONE, "op");
         rule.pause("op");
         return rule;
     }

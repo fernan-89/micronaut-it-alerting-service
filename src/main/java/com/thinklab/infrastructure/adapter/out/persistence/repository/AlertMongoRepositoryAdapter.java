@@ -28,6 +28,7 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -107,15 +108,55 @@ public class AlertMongoRepositoryAdapter implements AlertRepository {
         Bson update = Updates.combine(
                 Updates.set(FIELD_STATUS, alert.getStatus().name()),
                 Updates.set("resolvedAt", alert.getResolvedAt()),
-                Updates.set("incidentId", alert.getIncidentId()),
                 Updates.set("problem", alert.getProblem()),
+                Updates.set("reopenCount", alert.getReopenCount()),
+                Updates.set("reopenedAt", alert.getReopenedAt()),
                 Updates.set("updatedAt", Instant.now()),
                 Updates.push("auditTrail", AuditEntryDocument.fromDomain(auditEntry))
         );
         return Mono.from(getCollection().updateOne(guard, update))
                 .flatMap(result -> result.getMatchedCount() == 0
                         ? Mono.error(new InvalidAlertStatusException("Alert was changed by someone else while this change was being recorded; read it again and retry."))
-                        : Mono.<Void>empty());
+                        : Mono.<Void>empty())
+                .onErrorMap(MongoWriteException.class, error -> error.getError().getCode() == AlertRuleMongoRepositoryAdapter.DUPLICATE_KEY
+                        ? new DuplicateAlertException("An alert is already open for that check.") : error);
+    }
+
+    @Override
+    public Flux<Alert> findResolvedSince(UUID organisationId, Instant since) {
+        return Flux.from(getCollection().find(Filters.and(Filters.eq(FIELD_ORGANISATION, organisationId), Filters.eq(FIELD_STATUS, AlertStatus.RESOLVED.name()),
+                        Filters.gte("resolvedAt", since))).sort(Sorts.descending("resolvedAt")))
+                .map(AlertPersistenceMapper::toDomain);
+    }
+
+    @Override
+    public Mono<Boolean> saveIncidentLink(Alert alert, AlertAuditEntry auditEntry) {
+        Bson guard = Filters.and(Filters.eq(FIELD_ID, alert.getId()), Filters.eq(FIELD_ORGANISATION, alert.getOrganisationId()), Filters.eq(FIELD_STATUS, AlertStatus.OPEN.name()),
+                Filters.eq("incidentId", null));
+        Bson update = Updates.combine(
+                Updates.set("incidentId", alert.getIncidentId()),
+                Updates.set("problem", null),
+                Updates.set("updatedAt", Instant.now()),
+                Updates.push("auditTrail", AuditEntryDocument.fromDomain(auditEntry))
+        );
+        return Mono.from(getCollection().updateOne(guard, update)).map(result -> result.getMatchedCount() > 0);
+    }
+
+    @Override
+    public Mono<Boolean> claimNotice(UUID alertId, UUID organisationId, String key, Instant now, Duration minGap, int maxAttempts) {
+        String path = "notices." + key;
+        Bson guard = Filters.and(Filters.eq(FIELD_ID, alertId), Filters.eq(FIELD_ORGANISATION, organisationId), Filters.eq(path + ".sentAt", null),
+                Filters.or(Filters.exists(path + ".attempts", false), Filters.lt(path + ".attempts", maxAttempts)),
+                Filters.or(Filters.eq(path + ".lastAttemptAt", null), Filters.lt(path + ".lastAttemptAt", now.minus(minGap))));
+        Bson update = Updates.combine(Updates.inc(path + ".attempts", 1), Updates.set(path + ".lastAttemptAt", now));
+        return Mono.from(getCollection().updateOne(guard, update)).map(result -> result.getMatchedCount() > 0);
+    }
+
+    @Override
+    public Mono<Void> recordNotice(UUID alertId, UUID organisationId, String key, Instant sentAt, String error) {
+        String path = "notices." + key;
+        Bson update = Updates.combine(Updates.set(path + ".sentAt", sentAt), Updates.set(path + ".lastError", error));
+        return Mono.from(getCollection().updateOne(Filters.and(Filters.eq(FIELD_ID, alertId), Filters.eq(FIELD_ORGANISATION, organisationId)), update)).then();
     }
 
     @Override

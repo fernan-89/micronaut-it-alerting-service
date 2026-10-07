@@ -33,6 +33,8 @@ public class AlertingIndexInitializer implements ApplicationEventListener<Startu
     static final String OPEN_ALERT_INDEX = "organisationId_1_checkId_1_open";
     static final String ALERT_LIST_INDEX = "organisationId_1_status_1_openedAt_-1";
     static final String ALERT_STATUS_INDEX = "status_1";
+    static final String ALERT_RESOLVED_INDEX = "organisationId_1_status_1_resolvedAt_-1";
+    static final String WINDOW_CURRENT_INDEX = "organisationId_1_status_1_endsAt_1";
 
     private static final Logger log = LoggerFactory.getLogger(AlertingIndexInitializer.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(30);
@@ -64,6 +66,8 @@ public class AlertingIndexInitializer implements ApplicationEventListener<Startu
                 new IndexOptions().unique(true).partialFilterExpression(new Document("status", "OPEN")));
         ensureIndex(alerts, ALERT_LIST_INDEX, new Document("organisationId", 1).append("status", 1).append("openedAt", -1), new IndexOptions());
         ensureIndex(alerts, ALERT_STATUS_INDEX, new Document("status", 1), new IndexOptions());
+        ensureIndex(alerts, ALERT_RESOLVED_INDEX, new Document("organisationId", 1).append("status", 1).append("resolvedAt", -1), new IndexOptions());
+        ensureIndex(MaintenanceWindowMongoRepositoryAdapter.COLLECTION_NAME, WINDOW_CURRENT_INDEX, new Document("organisationId", 1).append("status", 1).append("endsAt", 1), new IndexOptions());
     }
 
     private void ensureIndex(String collection, String indexName, Document keys, IndexOptions options) {

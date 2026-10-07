@@ -6,6 +6,13 @@ import com.thinklab.application.dto.response.AlertResponse;
 import com.thinklab.application.dto.response.AlertRuleResponse;
 import com.thinklab.application.dto.response.AuditEntryResponse;
 import com.thinklab.application.dto.response.EvaluationResponse;
+import com.thinklab.application.dto.request.InitiateMaintenanceWindowRequest;
+import com.thinklab.application.dto.response.MaintenanceWindowResponse;
+import com.thinklab.application.usecase.CancelMaintenanceWindowUseCase;
+import com.thinklab.application.usecase.InitiateMaintenanceWindowUseCase;
+import com.thinklab.application.usecase.RetrieveMaintenanceWindowAuditLogUseCase;
+import com.thinklab.application.usecase.RetrieveMaintenanceWindowUseCase;
+import com.thinklab.application.usecase.RetrieveMaintenanceWindowsUseCase;
 import com.thinklab.application.usecase.ControlAlertRuleUseCase;
 import com.thinklab.application.usecase.EvaluateAlertsUseCase;
 import com.thinklab.application.usecase.InitiateAlertRuleUseCase;
@@ -57,20 +64,26 @@ class AlertingControllerTest {
     @Mock private RetrieveAlertsUseCase retrieveAlerts;
     @Mock private RetrieveAlertAuditLogUseCase alertAuditLog;
     @Mock private EvaluateAlertsUseCase evaluate;
+    @Mock private InitiateMaintenanceWindowUseCase initiateWindow;
+    @Mock private RetrieveMaintenanceWindowUseCase retrieveWindow;
+    @Mock private RetrieveMaintenanceWindowsUseCase retrieveWindows;
+    @Mock private CancelMaintenanceWindowUseCase cancelWindow;
+    @Mock private RetrieveMaintenanceWindowAuditLogUseCase windowAuditLog;
 
     private AlertingController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new AlertingController(initiateRule, retrieveRule, retrieveRules, updateRule, controlRule, ruleAuditLog, retrieveAlert, retrieveAlerts, alertAuditLog, evaluate);
+        controller = new AlertingController(initiateRule, retrieveRule, retrieveRules, updateRule, controlRule, ruleAuditLog, retrieveAlert, retrieveAlerts, alertAuditLog, evaluate,
+                initiateWindow, retrieveWindow, retrieveWindows, cancelWindow, windowAuditLog);
     }
 
     private AlertRuleResponse rule() {
-        return new AlertRuleResponse(id, tenant, "Production", null, "HIGH", "MEDIUM", requester, "ACTIVE", Instant.now(), Instant.now());
+        return new AlertRuleResponse(id, tenant, "Production", null, "HIGH", "MEDIUM", requester, "ACTIVE", null, null, null, 30, Instant.now(), Instant.now());
     }
 
     private AlertResponse alert() {
-        return new AlertResponse(id, tenant, UUID.randomUUID(), UUID.randomUUID(), "Intranet", null, "OPEN", Instant.now(), null, null, "timeout", null, Instant.now());
+        return new AlertResponse(id, tenant, UUID.randomUUID(), UUID.randomUUID(), "Intranet", null, "OPEN", Instant.now(), null, null, "timeout", null, Instant.now(), 0, null, List.of());
     }
 
     private List<AuditEntryResponse> trail() {
@@ -80,8 +93,8 @@ class AlertingControllerTest {
     @Test
     @DisplayName("the rule write routes delegate with the tenant, the executor and the role")
     void ruleWrites() {
-        var initiateRequest = new InitiateAlertRuleRequest("Production", null, Severity.HIGH, Severity.MEDIUM, requester);
-        var updateRequest = new UpdateAlertRuleRequest("Production", null, Severity.LOW, Severity.LOW, requester);
+        var initiateRequest = new InitiateAlertRuleRequest("Production", null, Severity.HIGH, Severity.MEDIUM, requester, null, null, null, null);
+        var updateRequest = new UpdateAlertRuleRequest("Production", null, Severity.LOW, Severity.LOW, requester, null, null, null, null);
         when(initiateRule.execute(tenant, initiateRequest, EXECUTOR, "AGENT")).thenReturn(Mono.just(rule()));
         when(updateRule.execute(id, tenant, updateRequest, EXECUTOR, "AGENT")).thenReturn(Mono.empty());
         when(controlRule.execute(id, tenant, ControlAlertRuleUseCase.Action.PAUSE, EXECUTOR, "AGENT")).thenReturn(Mono.empty());
@@ -122,11 +135,32 @@ class AlertingControllerTest {
     @Test
     @DisplayName("evaluating now delegates as the person who asked and answers what it did")
     void evaluateNow() {
-        when(evaluate.execute(tenant, EXECUTOR, "AGENT")).thenReturn(Mono.just(new EvaluationResponse(1, 0, 1)));
+        when(evaluate.execute(tenant, EXECUTOR, "AGENT")).thenReturn(Mono.just(new EvaluationResponse(1, 0, 1, 0, 0)));
 
         StepVerifier.create(controller.evaluate(tenantHeader, EXECUTOR, "AGENT")).assertNext(r -> {
             assertEquals(HttpStatus.OK, r.getStatus());
             assertEquals(1, r.body().opened());
         }).verifyComplete();
+    }
+
+    private MaintenanceWindowResponse window() {
+        return new MaintenanceWindowResponse(id, tenant, "Core switch upgrade", null, Instant.now(), Instant.now().plusSeconds(3600), "ACTIVE", Instant.now(), Instant.now());
+    }
+
+    @Test
+    @DisplayName("the maintenance window routes delegate with the tenant, the executor and the role")
+    void windows() {
+        var request = new InitiateMaintenanceWindowRequest("Core switch upgrade", null, Instant.now(), Instant.now().plusSeconds(3600));
+        when(initiateWindow.execute(tenant, request, EXECUTOR, "AGENT")).thenReturn(Mono.just(window()));
+        when(retrieveWindow.execute(id, tenant, "AGENT")).thenReturn(Mono.just(window()));
+        when(retrieveWindows.execute(tenant, "AGENT")).thenReturn(Flux.just(window()));
+        when(cancelWindow.execute(id, tenant, EXECUTOR, "AGENT")).thenReturn(Mono.empty());
+        when(windowAuditLog.execute(id, tenant, "AGENT")).thenReturn(Mono.just(trail()));
+
+        StepVerifier.create(controller.initiateWindow(tenantHeader, EXECUTOR, "AGENT", request)).assertNext(r -> assertEquals(HttpStatus.CREATED, r.getStatus())).verifyComplete();
+        StepVerifier.create(controller.retrieveWindow(id, tenantHeader, "AGENT")).assertNext(r -> assertEquals(HttpStatus.OK, r.getStatus())).verifyComplete();
+        StepVerifier.create(controller.retrieveWindows(tenantHeader, "AGENT")).assertNext(list -> assertEquals(1, list.size())).verifyComplete();
+        StepVerifier.create(controller.cancelWindow(id, tenantHeader, EXECUTOR, "AGENT")).assertNext(r -> assertEquals(HttpStatus.NO_CONTENT, r.getStatus())).verifyComplete();
+        StepVerifier.create(controller.windowAuditLog(id, tenantHeader, "AGENT")).assertNext(list -> assertEquals(1, list.size())).verifyComplete();
     }
 }

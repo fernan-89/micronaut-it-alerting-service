@@ -4,6 +4,7 @@ import com.thinklab.domain.exception.UpstreamUnavailableException;
 import com.thinklab.domain.port.IncidentsPort;
 import io.micronaut.core.annotation.Introspected;
 import io.micronaut.http.annotation.Body;
+import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Header;
 import io.micronaut.http.annotation.PathVariable;
 import io.micronaut.http.annotation.Post;
@@ -37,10 +38,17 @@ public class IncidentServiceAdapter implements IncidentsPort {
     @Override
     public Mono<UUID> open(UUID organisationId, IncidentDraft draft) {
         var body = new OpenIncidentApiRequest(draft.title(), draft.description(), draft.impact().name(), draft.urgency().name(), draft.requesterId(),
-                draft.assetId() == null ? null : Set.of(draft.assetId()));
+                draft.assetId() == null ? null : Set.of(draft.assetId()), draft.idempotencyKey());
         return client.open(organisationId.toString(), EXECUTOR, body)
                 .map(IncidentApiResponse::id)
                 .onErrorMap(error -> unavailable("opened", error));
+    }
+
+    @Override
+    public Mono<String> status(UUID organisationId, UUID incidentId) {
+        return client.retrieve(incidentId, organisationId.toString(), EXECUTOR)
+                .map(IncidentStatusApiResponse::status)
+                .onErrorMap(error -> unavailable("read", error));
     }
 
     @Override
@@ -57,11 +65,15 @@ public class IncidentServiceAdapter implements IncidentsPort {
 
     @Serdeable
     @Introspected
-    public record OpenIncidentApiRequest(String title, String description, String impact, String urgency, UUID requesterId, Set<UUID> affectedAssetIds) {}
+    public record OpenIncidentApiRequest(String title, String description, String impact, String urgency, UUID requesterId, Set<UUID> affectedAssetIds, String idempotencyKey) {}
 
     @Serdeable
     @Introspected
     public record IncidentApiResponse(UUID id) {}
+
+    @Serdeable
+    @Introspected
+    public record IncidentStatusApiResponse(String status) {}
 
     @Serdeable
     @Introspected
@@ -74,6 +86,9 @@ interface IncidentApiClient {
     @Post("/initiate")
     Mono<IncidentServiceAdapter.IncidentApiResponse> open(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor,
                                                           @Body IncidentServiceAdapter.OpenIncidentApiRequest request);
+
+    @Get("/{id}/retrieve")
+    Mono<IncidentServiceAdapter.IncidentStatusApiResponse> retrieve(@PathVariable UUID id, @Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor);
 
     @Post("/{id}/comment/initiate")
     Mono<Void> comment(@PathVariable UUID id, @Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor,
