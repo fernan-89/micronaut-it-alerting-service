@@ -21,8 +21,8 @@ outage of one check, opened and resolved by this service itself, never by hand.
 - **Staff only** (ADR-032): every route refuses a `REQUESTER` with 403 `ERR-ALR-00403`; another tenant's rule or alert answers 404.
 - **A flapping check reopens its alert** (ADR-034): down again within the rule's `reopenWithinMinutes` (default 30, 0 = never) of a resolution,
   and with its incident still being worked, the same alert is reopened and the incident gets a note; a finished incident means a new alert.
-- **Maintenance windows silence a check** (ADR-035): while a window covers it no alert is opened or reopened and nobody is told; a recovery is
-  still recorded. A window is cancelled, never edited.
+- **Maintenance windows silence a check** (ADR-035): while a window covers it no alert is opened or reopened and no opened, reopened or escalation notice is sent; a
+  recovery is still recorded and announced. A window is cancelled, never edited.
 - **People are told through webhooks** (ADR-036): a rule names an environment variable (`THINKLAB_ALERT_HOOK_...`, never the address) for the
   opened, reopened and resolved notices, and a second one for an **escalation** when the incident is still `NEW` after `escalateAfterMinutes`.
   Sent once whatever the number of instances, https only, a failure is kept on the alert and never fails the evaluation.

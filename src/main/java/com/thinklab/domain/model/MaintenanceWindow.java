@@ -10,8 +10,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Aggregate Root of a planned silence: from {@code startsAt} to {@code endsAt} no alert is opened or reopened and nobody is told (a
- * notice or an escalation) for the check it covers, or for every check when it covers none in particular (ADR-035). It never resolves an
+ * Aggregate Root of a planned silence: from {@code startsAt} to {@code endsAt} no alert is opened or reopened and no opened, reopened or escalation
+ * notice is sent for the check it covers, or for every check when it covers none in particular (ADR-035). It never resolves an
  * alert: a check that recovers is still resolved. A window can be cancelled but not edited, so what happened is what the audit trail says.
  */
 public class MaintenanceWindow {

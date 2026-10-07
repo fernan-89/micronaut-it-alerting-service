@@ -27,7 +27,7 @@
   "info": {
     "_exporter_id": "39879181",
     "_postman_id": "e1f3b5c7-9a2b-4c4d-8e6f-7a8b9c0d1e2f",
-    "description": "Enterprise-grade E2E Postman Suite for the IT Alerting Service Domain (BIAN-aligned, ADR-001/005/013/019/030/031/032/033). Creates a rule for every check and a rule for one check, reads and lists them (oldest first), updates the definition, pauses and resumes a rule, reads the audit ledger in order, lists alerts (none: the tenant has no checks) and runs an evaluation that has nothing to open. A second folder proves the service is staff only (a REQUESTER gets 403 ERR-ALR-00403 on every route). A third covers the negative guarantees: validation (blank or long name, missing or unknown impact and urgency, missing requester, malformed check id, missing tenant), duplicate names (409) on create and on rename, illegal transitions, updating a paused rule, tenant isolation, unknown alerts, an unknown status filter, no way to write an alert by hand and the absence of DELETE, with RFC 7807 error_code assertions. It files everything under its own generated tenant id (alrOrganisationId). Opening an alert and its real incident, the recovery note, the race of simultaneous evaluations, the paused rule and the oldest-rule-wins choice are proved by the platform smoke (alerting-smoke).",
+    "description": "Enterprise-grade E2E Postman Suite for the IT Alerting Service Domain (BIAN-aligned, ADR-001/005/013/019/030/031/032/033/034/035/036). Creates a rule for every check and a rule for one check, reads and lists them (oldest first), a rule with webhook notices (only the NAME of the environment variable is kept), an escalation and a reopen time, updates the definition, pauses and resumes a rule, reads the audit ledger in order, lists alerts (none: the tenant has no checks) and runs an evaluation that has nothing to open. A second folder plans, reads, lists, cancels and audits maintenance windows (ADR-035). A third proves the service is staff only (a REQUESTER gets 403 ERR-ALR-00403 on every route). A fourth covers the negative guarantees: validation (blank or long name, missing or unknown impact and urgency, missing requester, malformed check id, an address instead of a variable name, escalation and reopen times out of range, windows that are blank, inverted, in the past or over 30 days, missing tenant), duplicate names (409) on create and on rename, illegal transitions, updating a paused rule, tenant isolation, unknown alerts, an unknown status filter, no way to write an alert by hand and the absence of DELETE, with RFC 7807 error_code assertions. It files everything under its own generated tenant id (alrOrganisationId). Opening an alert and its real incident, the recovery note, the reopening, the silence of a window, the notices and the escalation, the race of simultaneous evaluations, the paused rule and the oldest-rule-wins choice are proved by the platform smoke (alerting-smoke).",
     "name": "IT Alerting Service - Alert Rule Suite",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -209,6 +209,11 @@
                   "    pm.expect(json.urgency).to.eql('MEDIUM');",
                   "    pm.expect(json.requesterId).to.eql(pm.environment.get('alrRequesterId'));",
                   "});",
+                  "pm.test('No webhook, no escalation, and the default reopen time (30 minutes, ADR-034)', () => {",
+                  "    pm.expect(json.notifyTarget).to.be.oneOf([null, undefined]);",
+                  "    pm.expect(json.escalateTarget).to.be.oneOf([null, undefined]);",
+                  "    pm.expect(json.reopenWithinMinutes).to.eql(30);",
+                  "});",
                   "pm.environment.set('ruleId', json.id);"
                 ],
                 "type": "text/javascript"
@@ -305,6 +310,151 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Only the NAMES of the variables are kept, with the times given', () => {",
+                  "    pm.expect(json.notifyTarget).to.eql('THINKLAB_ALERT_HOOK_OPS');",
+                  "    pm.expect(json.escalateTarget).to.eql('THINKLAB_ALERT_HOOK_ONCALL');",
+                  "    pm.expect(json.escalateAfterMinutes).to.eql(15);",
+                  "    pm.expect(json.reopenWithinMinutes).to.eql(0);",
+                  "});",
+                  "pm.environment.set('pagedRuleId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02b. Initiate a rule with webhook notices, an escalation and no reopening (ADR-034, ADR-036)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Paged\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"notifyTarget\": \"THINKLAB_ALERT_HOOK_OPS\",\n  \"escalateTarget\": \"THINKLAB_ALERT_HOOK_ONCALL\",\n  \"escalateAfterMinutes\": 15,\n  \"reopenWithinMinutes\": 0\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02c. Update that rule: drop the escalation, reopen within 45 minutes (204)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Paged\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"notifyTarget\": \"THINKLAB_ALERT_HOOK_OPS\",\n  \"reopenWithinMinutes\": 45\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{pagedRuleId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{pagedRuleId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Changed', () => { pm.expect(json.escalateTarget).to.be.oneOf([null, undefined]); pm.expect(json.escalateAfterMinutes).to.be.oneOf([null, undefined]); pm.expect(json.reopenWithinMinutes).to.eql(45); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02d. Retrieve it (escalation gone, new reopen time)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{pagedRuleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{pagedRuleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
                   "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
                   "pm.test('Same rule', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('ruleId')));"
                 ],
@@ -347,13 +497,13 @@
               "script": {
                 "exec": [
                   "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
-                  "pm.test('Oldest first', () => pm.expect(pm.response.json().map(r => r.name)).to.eql(['Production down', 'Intranet only']));"
+                  "pm.test('Oldest first', () => pm.expect(pm.response.json().map(r => r.name)).to.eql(['Production down', 'Intranet only', 'Paged']));"
                 ],
                 "type": "text/javascript"
               }
             }
           ],
-          "name": "04. List rules (both of this tenant, oldest first)",
+          "name": "04. List rules (all of this tenant, oldest first)",
           "request": {
             "header": [
               {
@@ -377,6 +527,48 @@
                 "retrieve"
               ],
               "raw": "{{base_url}}/it-alerting/v1/rule/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Initiated, then updated', () => pm.expect(pm.response.json().map(e => e.action)).to.eql(['INITIATED', 'UPDATED']));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04b. The audit ledger of the updated rule keeps who changed what",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{pagedRuleId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{pagedRuleId}}/audit-log/retrieve"
             }
           }
         },
@@ -731,7 +923,7 @@
               "script": {
                 "exec": [
                   "pm.test('Answered, or the monitor could not be read', () => pm.expect([200, 502]).to.include(pm.response.code));",
-                  "if (pm.response.code === 200) { const json = pm.response.json(); pm.test('Nothing opened, resolved or filed', () => { pm.expect(json.opened).to.eql(0); pm.expect(json.resolved).to.eql(0); pm.expect(json.incidentsOpened).to.eql(0); }); }",
+                  "if (pm.response.code === 200) { const json = pm.response.json(); pm.test('Nothing opened, resolved or filed', () => { pm.expect(json.opened).to.eql(0); pm.expect(json.resolved).to.eql(0); pm.expect(json.incidentsOpened).to.eql(0); pm.expect(json.reopened).to.eql(0); pm.expect(json.notified).to.eql(0); }); }",
                   "else { pm.test('502 ERR-ALR-00502', () => pm.expect(pm.response.json().error_code).to.eql('ERR-ALR-00502')); }"
                 ],
                 "type": "text/javascript"
@@ -767,6 +959,332 @@
         }
       ],
       "name": "01. Alert Rule Lifecycle (BIAN Behavior Qualifiers)"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('winStart', new Date(Date.now() - 60 * 1000).toISOString());",
+                  "pm.environment.set('winEnd', new Date(Date.now() + 60 * 60 * 1000).toISOString());",
+                  "pm.environment.set('winPastStart', new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString());",
+                  "pm.environment.set('winPastEnd', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());",
+                  "pm.environment.set('winTooLongEnd', new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('ACTIVE, for every check, with the times given', () => {",
+                  "    pm.expect(json.status).to.eql('ACTIVE');",
+                  "    pm.expect(json.name).to.eql('Patching');",
+                  "    pm.expect(json.checkId).to.be.oneOf([null, undefined]);",
+                  "    pm.expect(new Date(json.endsAt).getTime()).to.eql(new Date(pm.environment.get('winEnd')).getTime());",
+                  "});",
+                  "pm.environment.set('windowId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. Plan a window for every check (ACTIVE)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Patching\",\n  \"startsAt\": \"{{winStart}}\",\n  \"endsAt\": \"{{winEnd}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Tied to that check', () => pm.expect(pm.response.json().checkId).to.eql(pm.environment.get('alrCheckId')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. Plan a window for one check",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Intranet restart\",\n  \"startsAt\": \"{{winStart}}\",\n  \"endsAt\": \"{{winEnd}}\",\n  \"checkId\": \"{{alrCheckId}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Same window', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('windowId')));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. Retrieve Window By ID",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Both', () => pm.expect(pm.response.json().map(w => w.name).sort()).to.eql(['Intranet restart', 'Patching']));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. List windows (both of this tenant)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. Control: cancel (ACTIVE -> CANCELLED, the silence stops at once)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "control",
+                "cancel"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/control/cancel"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Cancelled', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. Retrieve (CANCELLED)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Ledger reads in order', () => pm.expect(pm.response.json().map(e => e.action)).to.eql(['INITIATED', 'CANCELLED']));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. Retrieve Window Audit Ledger (planned, then cancelled)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/audit-log/retrieve"
+            }
+          }
+        }
+      ],
+      "name": "02. Maintenance Windows (BIAN Behavior Qualifiers)"
     },
     {
       "item": [
@@ -1271,9 +1789,262 @@
               "raw": "{{base_url}}/it-alerting/v1/evaluation/execute"
             }
           }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "11. A REQUESTER cannot plan a window (403)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Requester attempt\",\n  \"startsAt\": \"{{winStart}}\",\n  \"endsAt\": \"{{winEnd}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "12. A REQUESTER cannot read a window (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "13. A REQUESTER cannot list windows (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "14. A REQUESTER cannot cancel a window (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "control",
+                "cancel"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/control/cancel"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "15. A REQUESTER cannot read a window audit trail (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{alrUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/audit-log/retrieve"
+            }
+          }
         }
       ],
-      "name": "02. Staff Only (REQUESTER refused)"
+      "name": "03. Staff Only (REQUESTER refused)"
     },
     {
       "item": [
@@ -2510,9 +3281,1065 @@
               "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}"
             }
           }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "28. Initiate - Notify target that is not a THINKLAB_ALERT_HOOK_ variable name (never an address) (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"notifyTarget\": \"https://hooks.example.com/secret\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "29. Initiate - Escalation target without an escalation time (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"escalateTarget\": \"THINKLAB_ALERT_HOOK_ONCALL\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "30. Initiate - Escalation time without an escalation target (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"escalateAfterMinutes\": 10\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "31. Initiate - Escalation time over 1440 minutes (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"escalateTarget\": \"THINKLAB_ALERT_HOOK_ONCALL\",\n  \"escalateAfterMinutes\": 1441\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "32. Initiate - Negative reopen time (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"reopenWithinMinutes\": -1\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "33. Initiate - Reopen time over 1440 minutes (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"reopenWithinMinutes\": 1441\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "34. Update - Notify target that is an address (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Everything down\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"notifyTarget\": \"https://hooks.example.com/secret\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "35. Plan a window - Blank name (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"startsAt\": \"{{winStart}}\",\n  \"endsAt\": \"{{winEnd}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "36. Plan a window - Name over 80 characters (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\n  \"startsAt\": \"{{winStart}}\",\n  \"endsAt\": \"{{winEnd}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "37. Plan a window - Missing the start (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"endsAt\": \"{{winEnd}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "38. Plan a window - Missing the end (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"startsAt\": \"{{winStart}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "39. Plan a window - End before the start (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"startsAt\": \"{{winEnd}}\",\n  \"endsAt\": \"{{winStart}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "40. Plan a window - A window that ended in the past (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"startsAt\": \"{{winPastStart}}\",\n  \"endsAt\": \"{{winPastEnd}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "41. Plan a window - Longer than 30 days (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"startsAt\": \"{{winStart}}\",\n  \"endsAt\": \"{{winTooLongEnd}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "42. Plan a window - Malformed check id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"startsAt\": \"{{winStart}}\",\n  \"endsAt\": \"{{winEnd}}\",\n  \"checkId\": \"not-a-uuid\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "43. Plan a window - Missing X-Tenant-Id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"notenant\",\n  \"startsAt\": \"{{winStart}}\",\n  \"endsAt\": \"{{winEnd}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "44. Cancel a CANCELLED window is an illegal transition (409)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "control",
+                "cancel"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/control/cancel"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "45. Retrieve window - Non-existent window (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "00000000-0000-0000-0000-000000000000",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/00000000-0000-0000-0000-000000000000/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "46. Retrieve window - Another tenant answers like a missing one (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "00000000-0000-0000-0000-000000000001"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "47. Cancel window - Another tenant (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "00000000-0000-0000-0000-000000000001"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "control",
+                "cancel"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/control/cancel"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-ALR-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-ALR-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "48. Window audit trail - Another tenant (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "00000000-0000-0000-0000-000000000001"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "49. Retrieve window - Malformed UUID Path (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "not-a-uuid",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/not-a-uuid/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not allowed', () => pm.expect([404, 405]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "50. Delete a window - There is no DELETE (404 or 405)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "DELETE",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "window",
+                "{{windowId}}"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/window/{{windowId}}"
+            }
+          }
         }
       ],
-      "name": "03. Negative Tests & Guarantees"
+      "name": "04. Negative Tests & Guarantees"
     }
   ],
   "variable": [
