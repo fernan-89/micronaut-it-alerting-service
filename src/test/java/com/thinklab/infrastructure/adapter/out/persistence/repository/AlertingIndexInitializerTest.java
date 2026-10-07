@@ -7,6 +7,7 @@ import com.mongodb.reactivestreams.client.MongoCollection;
 import com.mongodb.reactivestreams.client.MongoDatabase;
 import io.micronaut.context.event.StartupEvent;
 import org.bson.Document;
+import org.bson.conversions.Bson;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -35,6 +36,9 @@ class AlertingIndexInitializerTest {
         when(client.getDatabase("tenant_alr")).thenReturn(database);
         when(database.getCollection("alert_rules")).thenReturn(rules);
         when(database.getCollection("alerts")).thenReturn(alerts);
+        MongoCollection<Document> windows = mock(MongoCollection.class);
+        when(database.getCollection("maintenance_windows")).thenReturn(windows);
+        when(windows.createIndex(any(), any(IndexOptions.class))).thenReturn(Mono.just("ok"));
         when(rules.createIndex(any(), any(IndexOptions.class))).thenReturn(Mono.just("ok"));
         when(alerts.createIndex(any(), any(IndexOptions.class))).thenReturn(Mono.just("ok"));
 
@@ -45,11 +49,16 @@ class AlertingIndexInitializerTest {
         assertTrue(ruleOptions.getAllValues().get(0).isUnique());
         assertEquals("organisationId_1_name_1", ruleOptions.getAllValues().get(0).getName());
         ArgumentCaptor<IndexOptions> alertOptions = ArgumentCaptor.forClass(IndexOptions.class);
-        verify(alerts, times(3)).createIndex(any(), alertOptions.capture());
+        verify(alerts, times(4)).createIndex(any(), alertOptions.capture());
         IndexOptions open = alertOptions.getAllValues().get(0);
         assertTrue(open.isUnique());
         assertEquals("organisationId_1_checkId_1_open", open.getName());
         assertEquals(new Document("status", "OPEN"), open.getPartialFilterExpression());
+        ArgumentCaptor<IndexOptions> windowOptions = ArgumentCaptor.forClass(IndexOptions.class);
+        ArgumentCaptor<Bson> windowKeys = ArgumentCaptor.forClass(Bson.class);
+        verify(windows).createIndex(windowKeys.capture(), windowOptions.capture());
+        assertEquals("organisationId_1_status_1_endsAt_1", windowOptions.getValue().getName());
+        assertEquals(new Document("organisationId", 1).append("status", 1).append("endsAt", 1), windowKeys.getValue());
     }
 
     @Test
@@ -65,7 +74,7 @@ class AlertingIndexInitializerTest {
 
         initializer.onApplicationEvent(mock(StartupEvent.class));
 
-        verify(collection, times(5)).createIndex(any(), any(IndexOptions.class));
+        verify(collection, times(7)).createIndex(any(), any(IndexOptions.class));
         assertThrows(NullPointerException.class, () -> initializer.onApplicationEvent(null));
         assertThrows(NullPointerException.class, () -> new AlertingIndexInitializer(null, "mongodb://mongo:27017"));
         assertThrows(NullPointerException.class, () -> new AlertingIndexInitializer(client, null));

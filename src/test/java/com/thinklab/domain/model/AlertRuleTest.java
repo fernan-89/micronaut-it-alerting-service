@@ -125,6 +125,7 @@ class AlertRuleTest {
 
         AlertRule bare = AlertRule.reconstitute(id, org, "n", null, Severity.LOW, Severity.LOW, requester, AlertRule.Options.NONE, null, null, null, null);
         assertEquals(RuleStatus.ACTIVE, bare.getStatus());
+        assertEquals(AlertRule.Options.NONE, AlertRule.reconstitute(id, org, "n", null, Severity.LOW, Severity.LOW, requester, null, null, null, null, null).getOptions());
         assertTrue(bare.getAuditTrail().isEmpty());
         assertEquals(bare.getCreatedAt(), bare.getUpdatedAt());
 

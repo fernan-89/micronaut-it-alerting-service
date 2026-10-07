@@ -68,6 +68,31 @@ class IncidentServiceAdapterTest {
     }
 
     @Test
+    @DisplayName("the status of an incident is read as the service identity, and only the status comes back")
+    void reads() {
+        UUID incident = UUID.randomUUID();
+        when(client.retrieve(incident, tenant.toString(), "system:alerting")).thenReturn(Mono.just(new IncidentServiceAdapter.IncidentStatusApiResponse("IN_PROGRESS")));
+
+        StepVerifier.create(adapter.status(tenant, incident)).expectNext("IN_PROGRESS").verifyComplete();
+    }
+
+    @Test
+    @DisplayName("a status that cannot be read names the status code (or nothing) and never repeats the answer")
+    void readFailures() {
+        UUID incident = UUID.randomUUID();
+        HttpResponse<Object> missing = HttpResponse.status(HttpStatus.NOT_FOUND).body("secret detail of the answer");
+        when(client.retrieve(eq(incident), any(), any())).thenReturn(Mono.error(new HttpClientResponseException("boom secret detail", missing)))
+                .thenReturn(Mono.error(new IllegalStateException("connect refused secret detail")));
+
+        StepVerifier.create(adapter.status(tenant, incident)).expectErrorSatisfies(error -> {
+            assertTrue(error instanceof UpstreamUnavailableException);
+            assertEquals("The incident service did not accept the incident to be read (HTTP 404).", error.getMessage());
+        }).verify();
+        StepVerifier.create(adapter.status(tenant, incident)).expectErrorSatisfies(error ->
+                assertEquals("The incident service did not accept the incident to be read.", error.getMessage())).verify();
+    }
+
+    @Test
     @DisplayName("a refusal names the status and never repeats the answer; an unreachable service says so, for both calls")
     void failures() {
         HttpResponse<Object> refused = HttpResponse.status(HttpStatus.BAD_GATEWAY).body("secret detail of the answer");

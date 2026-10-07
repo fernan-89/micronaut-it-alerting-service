@@ -31,6 +31,10 @@ import reactor.test.StepVerifier;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -191,5 +195,113 @@ class AlertMongoAdapterTest {
         ArgumentCaptor<Bson> filter = ArgumentCaptor.forClass(Bson.class);
         verify(alerts).distinct(eq("organisationId"), filter.capture(), eq(UUID.class));
         assertTrue(filter.getValue().toString().contains("OPEN"));
+    }
+
+    @Test
+    @DisplayName("a reopened alert and its notices survive the round trip; the notice map is kept per cycle")
+    void roundTripWithReopenAndNotices() {
+        Instant sentAt = Instant.parse("2026-10-07T12:00:00Z");
+        Alert alert = Alert.reconstitute(UUID.randomUUID(), org, UUID.randomUUID(), UUID.randomUUID(), "Intranet", null, AlertStatus.OPEN, sentAt.minusSeconds(600), null, null,
+                "timeout", "incident not opened", sentAt, 2, sentAt.minusSeconds(60),
+                Map.of("OPENED_0", new Alert.Notice(1, sentAt, sentAt, null), "REOPENED_2", new Alert.Notice(3, sentAt, null, "The notification webhook could not be reached.")), List.of());
+
+        AlertDocument document = AlertPersistenceMapper.toDocument(alert);
+        Alert back = AlertPersistenceMapper.toDomain(document);
+
+        assertEquals(2, back.getReopenCount());
+        assertEquals(alert.getReopenedAt(), back.getReopenedAt());
+        assertEquals(2, back.getNotices().size());
+        assertEquals(new Alert.Notice(1, sentAt, sentAt, null), back.getNotices().get("OPENED_0"));
+        assertEquals(new Alert.Notice(3, sentAt, null, "The notification webhook could not be reached."), back.getNotices().get("REOPENED_2"));
+        assertEquals(2, document.getReopenCount());
+        assertEquals(alert.getReopenedAt(), document.getReopenedAt());
+        assertEquals(2, document.getNotices().size());
+        assertEquals("incident not opened", document.getProblem());
+    }
+
+    @Test
+    @DisplayName("the resolved alerts since a moment are the tenant's RESOLVED ones from that moment, newest first")
+    void resolvedSince() {
+        Alert alert = alert();
+        finds(alert);
+
+        StepVerifier.create(new AlertMongoRepositoryAdapter(client, URI).findResolvedSince(org, Instant.parse("2026-10-07T11:00:00Z"))).expectNextCount(1).verifyComplete();
+
+        ArgumentCaptor<Bson> filter = ArgumentCaptor.forClass(Bson.class);
+        verify(alerts).find(filter.capture());
+        String text = filter.getValue().toString();
+        assertTrue(text.contains("RESOLVED") && text.contains("resolvedAt") && text.contains("organisationId"));
+    }
+
+    @Test
+    @DisplayName("the incident link is written only while the alert is OPEN and has no incident; false when another instance linked it first")
+    void incidentLink() {
+        Alert alert = alert();
+        when(alerts.updateOne(any(Bson.class), any(Bson.class)))
+                .thenReturn(Mono.just(UpdateResult.acknowledged(1, 1L, null)))
+                .thenReturn(Mono.just(UpdateResult.acknowledged(0, 0L, null)));
+        AlertMongoRepositoryAdapter adapter = new AlertMongoRepositoryAdapter(client, URI);
+
+        StepVerifier.create(adapter.saveIncidentLink(alert, alert.getAuditTrail().get(1))).expectNext(true).verifyComplete();
+        StepVerifier.create(adapter.saveIncidentLink(alert, alert.getAuditTrail().get(1))).expectNext(false).verifyComplete();
+
+        ArgumentCaptor<Bson> guard = ArgumentCaptor.forClass(Bson.class);
+        ArgumentCaptor<Bson> update = ArgumentCaptor.forClass(Bson.class);
+        verify(alerts, times(2)).updateOne(guard.capture(), update.capture());
+        String guardText = guard.getAllValues().get(0).toString();
+        assertTrue(guardText.contains("OPEN") && guardText.contains("incidentId") && guardText.contains("organisationId"));
+        String updateText = update.getAllValues().get(0).toString();
+        assertTrue(updateText.contains("incidentId") && updateText.contains("auditTrail"));
+    }
+
+    @Test
+    @DisplayName("a notice is claimed atomically by key (not sent, fewer attempts than the maximum, not tried in the gap); only the winner gets true")
+    void claim() {
+        UUID id = UUID.randomUUID();
+        Instant now = Instant.parse("2026-10-07T12:00:00Z");
+        when(alerts.updateOne(any(Bson.class), any(Bson.class)))
+                .thenReturn(Mono.just(UpdateResult.acknowledged(1, 1L, null)))
+                .thenReturn(Mono.just(UpdateResult.acknowledged(0, 0L, null)));
+        AlertMongoRepositoryAdapter adapter = new AlertMongoRepositoryAdapter(client, URI);
+
+        StepVerifier.create(adapter.claimNotice(id, org, "OPENED_0", now, Duration.ofSeconds(30), 3)).expectNext(true).verifyComplete();
+        StepVerifier.create(adapter.claimNotice(id, org, "OPENED_0", now, Duration.ofSeconds(30), 3)).expectNext(false).verifyComplete();
+
+        ArgumentCaptor<Bson> guard = ArgumentCaptor.forClass(Bson.class);
+        ArgumentCaptor<Bson> update = ArgumentCaptor.forClass(Bson.class);
+        verify(alerts, times(2)).updateOne(guard.capture(), update.capture());
+        String guardText = guard.getAllValues().get(0).toString();
+        assertTrue(guardText.contains("notices.OPENED_0.sentAt") && guardText.contains("notices.OPENED_0.attempts") && guardText.contains("notices.OPENED_0.lastAttemptAt"));
+        assertTrue(guardText.contains("2026-10-07T11:59:30Z") || guardText.contains("11:59:30"));
+        String updateText = update.getAllValues().get(0).toString();
+        assertTrue(updateText.contains("$inc") && updateText.contains("notices.OPENED_0.attempts") && updateText.contains("notices.OPENED_0.lastAttemptAt"));
+    }
+
+    @Test
+    @DisplayName("what came of a notice (sent, or a fixed reason) is written under its key, whether or not the alert still exists")
+    void recordNotice() {
+        UUID id = UUID.randomUUID();
+        Instant now = Instant.parse("2026-10-07T12:00:00Z");
+        when(alerts.updateOne(any(Bson.class), any(Bson.class))).thenReturn(Mono.just(UpdateResult.acknowledged(1, 1L, null)));
+        AlertMongoRepositoryAdapter adapter = new AlertMongoRepositoryAdapter(client, URI);
+
+        StepVerifier.create(adapter.recordNotice(id, org, "ESCALATED_1", now, null)).verifyComplete();
+        StepVerifier.create(adapter.recordNotice(id, org, "ESCALATED_1", null, "The notification webhook could not be reached.")).verifyComplete();
+
+        ArgumentCaptor<Bson> update = ArgumentCaptor.forClass(Bson.class);
+        verify(alerts, times(2)).updateOne(any(Bson.class), update.capture());
+        assertTrue(update.getAllValues().get(0).toString().contains("notices.ESCALATED_1.sentAt"));
+        assertTrue(update.getAllValues().get(1).toString().contains("notices.ESCALATED_1.lastError"));
+    }
+
+    @Test
+    @DisplayName("a guarded save that hits the partial unique index (a reopening while another alert is OPEN) is the domain's duplicate; another write error passes through")
+    void saveDuplicate() {
+        Alert alert = alert();
+        when(alerts.updateOne(any(Bson.class), any(Bson.class))).thenReturn(Mono.error(writeError(11000))).thenReturn(Mono.error(writeError(1)));
+        AlertMongoRepositoryAdapter adapter = new AlertMongoRepositoryAdapter(client, URI);
+
+        StepVerifier.create(adapter.save(alert, AlertStatus.RESOLVED, alert.getAuditTrail().get(1))).expectError(DuplicateAlertException.class).verify();
+        StepVerifier.create(adapter.save(alert, AlertStatus.RESOLVED, alert.getAuditTrail().get(1))).expectError(MongoWriteException.class).verify();
     }
 }

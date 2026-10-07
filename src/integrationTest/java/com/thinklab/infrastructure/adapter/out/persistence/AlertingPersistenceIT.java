@@ -5,14 +5,18 @@ import com.thinklab.domain.exception.DuplicateAlertException;
 import com.thinklab.domain.exception.DuplicateAlertRuleException;
 import com.thinklab.domain.exception.InvalidAlertRuleStatusException;
 import com.thinklab.domain.exception.InvalidAlertStatusException;
+import com.thinklab.domain.exception.InvalidMaintenanceWindowStatusException;
 import com.thinklab.domain.model.Alert;
 import com.thinklab.domain.model.Alert.AlertStatus;
 import com.thinklab.domain.model.AlertRule;
+import com.thinklab.domain.model.MaintenanceWindow;
+import com.thinklab.domain.model.MaintenanceWindow.WindowStatus;
 import com.thinklab.domain.model.AlertRule.RuleStatus;
 import com.thinklab.domain.model.AlertRule.Severity;
 import com.thinklab.domain.repository.AlertRepository;
 import com.thinklab.domain.repository.AlertRepository.Filter;
 import com.thinklab.domain.repository.AlertRuleRepository;
+import com.thinklab.domain.repository.MaintenanceWindowRepository;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import io.micronaut.test.support.TestPropertyProvider;
 import jakarta.inject.Inject;
@@ -22,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import reactor.core.publisher.Flux;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -50,6 +56,7 @@ class AlertingPersistenceIT implements TestPropertyProvider {
 
     @Inject AlertRuleRepository rules;
     @Inject AlertRepository alerts;
+    @Inject MaintenanceWindowRepository windows;
     @Inject MongoClient mongoClient;
 
     private AlertRule newRule(UUID organisation, String name, UUID checkId) {
@@ -166,7 +173,7 @@ class AlertingPersistenceIT implements TestPropertyProvider {
         Alert second = alerts.findById(created.getId(), organisation).block();
         UUID incident = UUID.randomUUID();
 
-        alerts.save(first, AlertStatus.OPEN, first.linkIncident(incident, EXECUTOR)).block();
+        assertTrue(alerts.saveIncidentLink(first, linked(first, incident)).block());
         var firstResolve = first.resolve(EXECUTOR);
         alerts.save(first, AlertStatus.OPEN, firstResolve).block();
         var lost = second.resolve(EXECUTOR);
@@ -176,6 +183,113 @@ class AlertingPersistenceIT implements TestPropertyProvider {
         assertEquals(AlertStatus.RESOLVED, stored.getStatus());
         assertEquals(incident, stored.getIncidentId());
         assertEquals(3, stored.getAuditTrail().size());
+    }
+
+    private Alert.AlertAuditEntry linked(Alert alert, UUID incident) {
+        return alert.linkIncident(incident, EXECUTOR);
+    }
+
+    @Test
+    @DisplayName("the incident link is written once: the second instance that linked an incident loses and the trail holds one INCIDENT_OPENED")
+    void incidentLinkOnce() {
+        UUID organisation = UUID.randomUUID();
+        Alert created = alerts.create(newAlert(organisation, UUID.randomUUID())).block();
+        Alert first = alerts.findById(created.getId(), organisation).block();
+        Alert second = alerts.findById(created.getId(), organisation).block();
+        UUID incident = UUID.randomUUID();
+
+        assertTrue(alerts.saveIncidentLink(first, linked(first, incident)).block());
+        assertEquals(false, alerts.saveIncidentLink(second, linked(second, incident)).block());
+
+        Alert stored = alerts.findById(created.getId(), organisation).block();
+        assertEquals(incident, stored.getIncidentId());
+        assertEquals(1, stored.getAuditTrail().stream().filter(entry -> "INCIDENT_OPENED".equals(entry.action())).count());
+    }
+
+    @Test
+    @DisplayName("a resolved alert is found since a moment, newest first, and reopened with a guarded save that keeps the count; a reopening onto another OPEN alert of the check loses")
+    void reopen() {
+        UUID organisation = UUID.randomUUID();
+        UUID check = UUID.randomUUID();
+        Alert alert = alerts.create(newAlert(organisation, check)).block();
+        alerts.save(alert, AlertStatus.OPEN, alert.resolve(EXECUTOR)).block();
+
+        List<Alert> candidates = alerts.findResolvedSince(organisation, Instant.now().minus(Duration.ofMinutes(5))).collectList().block();
+        assertEquals(List.of(alert.getId()), candidates.stream().map(Alert::getId).toList());
+        assertTrue(alerts.findResolvedSince(organisation, Instant.now().plus(Duration.ofMinutes(5))).collectList().block().isEmpty());
+
+        Alert loaded = candidates.get(0);
+        alerts.save(loaded, AlertStatus.RESOLVED, loaded.reopen(EXECUTOR)).block();
+        Alert stored = alerts.findById(alert.getId(), organisation).block();
+        assertEquals(AlertStatus.OPEN, stored.getStatus());
+        assertEquals(1, stored.getReopenCount());
+        assertNull(stored.getResolvedAt());
+        assertTrue(stored.getReopenedAt() != null);
+
+        Alert other = alerts.create(newAlert(organisation, UUID.randomUUID())).block();
+        alerts.save(other, AlertStatus.OPEN, other.resolve(EXECUTOR)).block();
+        Alert twin = alerts.create(newAlert(organisation, other.getCheckId())).block();
+        assertThrows(DuplicateAlertException.class, () -> alerts.save(other, AlertStatus.RESOLVED, other.reopen(EXECUTOR)).block());
+        assertEquals(AlertStatus.OPEN, alerts.findById(twin.getId(), organisation).block().getStatus());
+    }
+
+    @Test
+    @DisplayName("a notice is claimed by one caller only, not again within the gap, not past the attempts, and never once sent; what came of it is kept under its key")
+    void notices() {
+        UUID organisation = UUID.randomUUID();
+        Alert alert = alerts.create(newAlert(organisation, UUID.randomUUID())).block();
+        Instant now = Instant.now();
+        Duration gap = Duration.ofSeconds(30);
+
+        assertTrue(alerts.claimNotice(alert.getId(), organisation, "OPENED_0", now, gap, 3).block());
+        assertEquals(false, alerts.claimNotice(alert.getId(), organisation, "OPENED_0", now.plusSeconds(5), gap, 3).block());
+        assertEquals(false, alerts.claimNotice(alert.getId(), UUID.randomUUID(), "OPENED_0", now.plusSeconds(60), gap, 3).block());
+        alerts.recordNotice(alert.getId(), organisation, "OPENED_0", null, "The notification webhook could not be reached.").block();
+        Alert.Notice failed = alerts.findById(alert.getId(), organisation).block().notice("OPENED");
+        assertEquals(1, failed.attempts());
+        assertEquals("The notification webhook could not be reached.", failed.lastError());
+
+        assertTrue(alerts.claimNotice(alert.getId(), organisation, "OPENED_0", now.plusSeconds(60), gap, 3).block());
+        assertTrue(alerts.claimNotice(alert.getId(), organisation, "OPENED_0", now.plusSeconds(120), gap, 3).block());
+        assertEquals(false, alerts.claimNotice(alert.getId(), organisation, "OPENED_0", now.plusSeconds(180), gap, 3).block());
+
+        assertTrue(alerts.claimNotice(alert.getId(), organisation, "RESOLVED_0", now, gap, 3).block());
+        alerts.recordNotice(alert.getId(), organisation, "RESOLVED_0", now, null).block();
+        assertEquals(false, alerts.claimNotice(alert.getId(), organisation, "RESOLVED_0", now.plusSeconds(600), gap, 3).block());
+        assertTrue(alerts.findById(alert.getId(), organisation).block().notice("OPENED").sentAt() == null);
+    }
+
+    // ------------------------------------------------------------------ Maintenance windows
+
+    @Test
+    @DisplayName("a window is read back whole and only for its own organisation; the current ones are the ACTIVE ones that have not ended; a cancel is a guarded save")
+    void windows() {
+        UUID organisation = UUID.randomUUID();
+        Instant now = Instant.now();
+        MaintenanceWindow running = windows.create(MaintenanceWindow.createNew(UUID.randomUUID(), organisation, "Patching", null, now.minusSeconds(60), now.plusSeconds(3600), now, "op-1")).block();
+        MaintenanceWindow forCheck = windows.create(MaintenanceWindow.createNew(UUID.randomUUID(), organisation, "One check", UUID.randomUUID(), now.minusSeconds(60), now.plusSeconds(3600), now, "op-1")).block();
+        MaintenanceWindow soon = windows.create(MaintenanceWindow.createNew(UUID.randomUUID(), organisation, "Next week", null, now.plusSeconds(86400), now.plusSeconds(90000), now, "op-1")).block();
+
+        assertEquals(forCheck.getCheckId(), windows.findById(forCheck.getId(), organisation).block().getCheckId());
+        assertNull(windows.findById(running.getId(), UUID.randomUUID()).block());
+        assertEquals(3, windows.findAll(organisation).collectList().block().size());
+        assertEquals("Next week", windows.findAll(organisation).blockFirst().getName());
+        assertTrue(windows.findAll(UUID.randomUUID()).collectList().block().isEmpty());
+        assertEquals(3, windows.findCurrent(organisation, now).collectList().block().size());
+        assertTrue(windows.findCurrent(organisation, now.plusSeconds(7200)).collectList().block().stream().noneMatch(window -> window.getId().equals(running.getId())));
+
+        MaintenanceWindow first = windows.findById(running.getId(), organisation).block();
+        MaintenanceWindow second = windows.findById(running.getId(), organisation).block();
+        windows.save(first, WindowStatus.ACTIVE, first.cancel("op-1")).block();
+        var lost = second.cancel("op-2");
+
+        assertThrows(InvalidMaintenanceWindowStatusException.class, () -> windows.save(second, WindowStatus.ACTIVE, lost).block());
+        MaintenanceWindow stored = windows.findById(running.getId(), organisation).block();
+        assertEquals(WindowStatus.CANCELLED, stored.getStatus());
+        assertEquals(2, stored.getAuditTrail().size());
+        assertTrue(windows.findCurrent(organisation, now).collectList().block().stream().noneMatch(window -> window.getId().equals(running.getId())));
+        assertEquals(2, windows.findCurrent(organisation, now).collectList().block().size());
+        assertEquals(soon.getId(), windows.findAll(organisation).blockFirst().getId());
     }
 
     // ------------------------------------------------------------------ Tenants
@@ -207,7 +321,9 @@ class AlertingPersistenceIT implements TestPropertyProvider {
     @DisplayName("startup created the indexes: the unique rule name, and the partial unique one on OPEN alerts")
     void indexesExist() {
         assertTrue(indexNames("alert_rules").containsAll(List.of("organisationId_1_name_1", "status_1")));
-        assertTrue(indexNames("alerts").containsAll(List.of("organisationId_1_checkId_1_open", "organisationId_1_status_1_openedAt_-1", "status_1")));
+        assertTrue(indexNames("alerts").containsAll(List.of("organisationId_1_checkId_1_open", "organisationId_1_status_1_openedAt_-1", "status_1",
+                "organisationId_1_status_1_resolvedAt_-1")));
+        assertTrue(indexNames("maintenance_windows").contains("organisationId_1_status_1_endsAt_1"));
     }
 
     private List<String> indexNames(String collection) {

@@ -19,10 +19,17 @@ outage of one check, opened and resolved by this service itself, never by hand.
 - **Nothing leaks from upstream** (ADR-031): the target of a check is never read, and an error says which service and which HTTP status,
   never what it answered. Calls go through the public routes as the service identity `system:alerting`.
 - **Staff only** (ADR-032): every route refuses a `REQUESTER` with 403 `ERR-ALR-00403`; another tenant's rule or alert answers 404.
-- **Not here yet:** notifying people (email, chat, paging), escalation, silencing during maintenance, grouping many checks into one
-  incident, closing the incident when the check recovers, events instead of polling. A check that flaps opens a new alert and incident per
-  outage (the monitor's thresholds are what dampens it). If the process dies between the incident being created and its id being saved, that
-  incident can be duplicated on the retry.
+- **A flapping check reopens its alert** (ADR-034): down again within the rule's `reopenWithinMinutes` (default 30, 0 = never) of a resolution,
+  and with its incident still being worked, the same alert is reopened and the incident gets a note; a finished incident means a new alert.
+- **Maintenance windows silence a check** (ADR-035): while a window covers it no alert is opened or reopened and nobody is told; a recovery is
+  still recorded. A window is cancelled, never edited.
+- **People are told through webhooks** (ADR-036): a rule names an environment variable (`THINKLAB_ALERT_HOOK_...`, never the address) for the
+  opened, reopened and resolved notices, and a second one for an **escalation** when the incident is still `NEW` after `escalateAfterMinutes`.
+  Sent once whatever the number of instances, https only, a failure is kept on the alert and never fails the evaluation.
+- **No duplicate incident** (incident ADR-034): the incident is opened under the alert id as idempotency key, so a retry, a lost race or a
+  crash between the incident and its link never opens a second one.
+- **Not here yet:** email, paging or per-person routing, several escalation levels, grouping many checks into one incident, closing the
+  incident when the check recovers, events instead of polling.
 
 ## BIAN Behavior Qualifier Contract
 
@@ -31,21 +38,26 @@ comes from the verified token.
 
 | Behavior Qualifier | Route |
 |---|---|
-| rule/initiate | `POST /it-alerting/v1/rule/initiate` `{"name":"Production down","checkId":"<uuid, optional>","impact":"HIGH","urgency":"MEDIUM","requesterId":"<uuid>"}` (no `checkId` = every check) |
+| rule/initiate | `POST /it-alerting/v1/rule/initiate` `{"name":"Production down","checkId":"<uuid, optional>","impact":"HIGH","urgency":"MEDIUM","requesterId":"<uuid>","notifyTarget":"THINKLAB_ALERT_HOOK_OPS","escalateTarget":"THINKLAB_ALERT_HOOK_ONCALL","escalateAfterMinutes":15,"reopenWithinMinutes":30}` (no `checkId` = every check; the four last fields are optional) |
 | rule/retrieve | `GET /it-alerting/v1/rule/{id}/retrieve` |
 | rule/retrieve (collection) | `GET /it-alerting/v1/rule/retrieve` (oldest first) |
 | rule/update | `PUT /it-alerting/v1/rule/{id}/update` (the whole definition again, in any status) |
 | rule/control/pause | `PUT /it-alerting/v1/rule/{id}/control/pause` (ACTIVE -> PAUSED) |
 | rule/control/resume | `PUT /it-alerting/v1/rule/{id}/control/resume` (PAUSED -> ACTIVE) |
 | rule/audit-log/retrieve | `GET /it-alerting/v1/rule/{id}/audit-log/retrieve` |
+| window/initiate | `POST /it-alerting/v1/window/initiate` `{"name":"Patching","checkId":"<uuid, optional>","startsAt":"<instant>","endsAt":"<instant>"}` (no `checkId` = every check; at most 30 days; cannot end in the past) |
+| window/retrieve | `GET /it-alerting/v1/window/{id}/retrieve` and `GET /it-alerting/v1/window/retrieve` (newest start first) |
+| window/control/cancel | `PUT /it-alerting/v1/window/{id}/control/cancel` (ACTIVE -> CANCELLED: the silence stops at once) |
+| window/audit-log/retrieve | `GET /it-alerting/v1/window/{id}/audit-log/retrieve` |
 | retrieve | `GET /it-alerting/v1/{id}/retrieve` |
 | retrieve (collection) | `GET /it-alerting/v1/retrieve?status=&checkId=` (newest first) |
 | audit-log/retrieve | `GET /it-alerting/v1/{id}/audit-log/retrieve` |
-| evaluation/execute | `PUT /it-alerting/v1/evaluation/execute` (looks at the tenant right now, as the scheduler does: `{"opened":1,"resolved":0,"incidentsOpened":1}`; 502 when the monitor cannot be read) |
+| evaluation/execute | `PUT /it-alerting/v1/evaluation/execute` (looks at the tenant right now, as the scheduler does: `{"opened":1,"resolved":0,"incidentsOpened":1,"reopened":0,"notified":1}`; 502 when the monitor cannot be read) |
 
 ```text
 rule:   ACTIVE <-> PAUSED
-alert:  OPEN -> RESOLVED      (OPEN may or may not have an incident yet; `problem` says why not)
+alert:  OPEN <-> RESOLVED     (OPEN may or may not have an incident yet; `problem` says why not; RESOLVED -> OPEN is a reopening)
+window: ACTIVE -> CANCELLED
 ```
 
 Impact and urgency are `LOW`, `MEDIUM` or `HIGH`, as the incident service takes them. The requester is the person the incident is filed
@@ -60,7 +72,7 @@ curl -X PUT "http://localhost:8104/it-alerting/v1/evaluation/execute" -H "X-Tena
 | Code | HTTP | Meaning |
 |---|---|---|
 | `ERR-ALR-00403` | 403 | A REQUESTER used alerting (ADR-032) |
-| `ERR-ALR-00404` | 404 | Rule or alert not found (another tenant's answers the same) |
+| `ERR-ALR-00404` | 404 | Rule, alert or maintenance window not found (another tenant's answers the same) |
 | `ERR-ALR-00409` | 409 | Duplicate rule name, illegal transition (pause a paused rule), or it changed while the write was applied (retry) |
 | `ERR-ALR-00502` | 502 | The health monitor or the incident service could not be reached or refused (ADR-031) |
 | `ERR-VALIDATION-00400` | 400 | Payload/header/identifier validation failure |
@@ -70,7 +82,8 @@ curl -X PUT "http://localhost:8104/it-alerting/v1/evaluation/execute" -H "X-Tena
 
 `HEALTH_MONITORING_SERVICE_URL` (default `http://localhost:8103`), `INCIDENT_SERVICE_URL` (default `http://localhost:8098`),
 `thinklab.alerting.scheduler-enabled` (env `THINKLAB_ALERTING_SCHEDULER_ENABLED`, default true: turn it off for an instance that only
-serves the API), `tick` (5s) and `concurrency` (5 tenants at a time).
+serves the API), `tick` (5s) and `concurrency` (5 tenants at a time). The webhook addresses are environment variables named in the rules
+(`THINKLAB_ALERT_HOOK_<NAME>`, an https address); `THINKLAB_ALERTING_INSECURE_HOSTS` lists hosts that may be plain http (a test double only).
 
 Do not put personal data in a rule name: it is stored with the rule.
 
@@ -78,7 +91,7 @@ Do not put personal data in a rule name: it is stored with the rule.
 
 001 hexagonal architecture · 005 UUID identity sovereignty and audit tracing · 013 BIAN conventions · 019 HTTP 409 for state conflicts ·
 030 one alert and one incident per outage, found by polling · 031 upstreams through public routes · 032 staff only · 033 guarded writes and
-unique backstops.
+unique backstops · 034 reopen a resolved alert when the check flaps · 035 maintenance windows · 036 webhook notices and escalation.
 
 ## License
 
