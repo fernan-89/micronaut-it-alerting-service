@@ -40,6 +40,8 @@ micronaut:
         url: ${PATCH_REGISTRY_SERVICE_URL:`http://localhost:8106`}
       capacity-registry-service:
         url: ${CAPACITY_REGISTRY_SERVICE_URL:`http://localhost:8107`}
+      vendor-registry-service:
+        url: ${VENDOR_REGISTRY_SERVICE_URL:`http://localhost:8108`}
       incident-service:
         url: ${INCIDENT_SERVICE_URL:`http://localhost:8098`}
 

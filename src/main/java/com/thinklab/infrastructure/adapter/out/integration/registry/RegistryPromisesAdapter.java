@@ -22,7 +22,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * Adapter to the backup, patch and capacity registries (ADR-037): the policies of a tenant, read through each registry's public route as a service
+ * Adapter to the backup, patch, capacity and vendor registries (ADR-037, ADR-038): the policies of a tenant, read through each registry's public route as a service
  * identity. The registries judge a promise when it is read, so alerting only turns that verdict into DOWN, UP or not judged, with an error from a
  * fixed vocabulary (never a value from the registry). A failure says which registry and which status and never repeats its answer.
  */
@@ -38,11 +38,13 @@ public class RegistryPromisesAdapter implements PromisesPort {
     private final BackupApiClient backup;
     private final PatchApiClient patch;
     private final CapacityApiClient capacity;
+    private final VendorApiClient vendor;
 
-    public RegistryPromisesAdapter(BackupApiClient backup, PatchApiClient patch, CapacityApiClient capacity) {
+    public RegistryPromisesAdapter(BackupApiClient backup, PatchApiClient patch, CapacityApiClient capacity, VendorApiClient vendor) {
         this.backup = backup;
         this.patch = patch;
         this.capacity = capacity;
+        this.vendor = vendor;
     }
 
     @Override
@@ -52,6 +54,7 @@ public class RegistryPromisesAdapter implements PromisesPort {
             case BACKUP -> read(source, backup.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromBackup);
             case PATCH -> read(source, patch.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromPatch);
             case CAPACITY -> read(source, capacity.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromCapacity);
+            case VENDOR -> read(source, vendor.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromAgreement);
             case HEALTH_CHECK -> throw new IllegalArgumentException("The health checks are read from the health monitor, not from a registry.");
         };
     }
@@ -86,6 +89,18 @@ public class RegistryPromisesAdapter implements PromisesPort {
                 broken ? "CAPACITY_CRITICAL" : null, Source.CAPACITY);
     }
 
+    /**
+     * An agreement of the vendor registry (ADR-038): one that is about to end or has ended is a promise broken (somebody must renew it or replace
+     * it), one in force is kept, and one that has not started or is paused is not judged. Its name is the contract's own reference.
+     */
+    static ObservedCheck fromAgreement(VendorAgreement agreement) {
+        boolean expiring = "EXPIRING".equals(agreement.standing());
+        boolean expired = "EXPIRED".equals(agreement.standing());
+        String health = expiring || expired ? BROKEN : "IN_FORCE".equals(agreement.standing()) ? KEPT : NOT_JUDGED;
+        String error = expired ? "AGREEMENT_EXPIRED" : expiring ? "AGREEMENT_EXPIRING" : null;
+        return new ObservedCheck(agreement.id(), agreement.reference(), agreement.assetId(), health, agreement.status(), error, Source.VENDOR);
+    }
+
     @Serdeable
     @Introspected
     public record BackupPolicy(UUID id, String name, UUID assetId, String status, String protection, @Nullable String restoreTest) {}
@@ -97,6 +112,10 @@ public class RegistryPromisesAdapter implements PromisesPort {
     @Serdeable
     @Introspected
     public record CapacityPolicy(UUID id, String name, UUID assetId, String status, String level) {}
+
+    @Serdeable
+    @Introspected
+    public record VendorAgreement(UUID id, String reference, @Nullable UUID assetId, String status, String standing) {}
 }
 
 @Client(id = "backup-registry-service", path = "/it-backup-registry/v1")
@@ -118,4 +137,11 @@ interface CapacityApiClient {
 
     @Get("/retrieve")
     Mono<List<RegistryPromisesAdapter.CapacityPolicy>> list(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor);
+}
+
+@Client(id = "vendor-registry-service", path = "/it-vendor-registry/v1")
+interface VendorApiClient {
+
+    @Get("/agreement/retrieve")
+    Mono<List<RegistryPromisesAdapter.VendorAgreement>> list(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor);
 }
