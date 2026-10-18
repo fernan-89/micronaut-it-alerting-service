@@ -156,4 +156,14 @@ class GlobalExceptionHandlerTest {
     void badGateway() {
         assertProblem(exceptionHandler.handle(request, new UpstreamUnavailableException("The health monitor could not be read.")), HttpStatus.BAD_GATEWAY, "ERR-ALR-00502");
     }
+
+    @Test
+    @DisplayName("a date or a moment that cannot be read is a 400 that says the format and never repeats what was written")
+    void malformedDate() {
+        Map<String, Object> body = assertProblem(exceptionHandler.handle(request, new java.time.format.DateTimeParseException("Text 'secret-yesterday' could not be parsed", "secret-yesterday", 0)),
+                HttpStatus.BAD_REQUEST, "ERR-VALIDATION-00400");
+
+        org.junit.jupiter.api.Assertions.assertTrue(body.get("detail").toString().contains("ISO-8601"));
+        org.junit.jupiter.api.Assertions.assertFalse(body.toString().contains("secret"));
+    }
 }
