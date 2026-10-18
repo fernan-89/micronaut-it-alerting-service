@@ -26,6 +26,9 @@ outage of one check, opened and resolved by this service itself, never by hand.
 - **People are told through webhooks** (ADR-036): a rule names an environment variable (`THINKLAB_ALERT_HOOK_...`, never the address) for the
   opened, reopened and resolved notices, and a second one for an **escalation** when the incident is still `NEW` after `escalateAfterMinutes`.
   Sent once whatever the number of instances, https only, a failure is kept on the alert and never fails the evaluation.
+- **Broken promises are alerted too** (ADR-037): a rule has a `source` (`HEALTH_CHECK` by default, `BACKUP`, `PATCH`, `CAPACITY`); the backup, patch and capacity
+  registries are read only while an ACTIVE rule watches them, and an RPO breach (or overdue restore test), an overdue patch or a CRITICAL capacity policy is a
+  DOWN thing with a fixed error code. A paused or not yet judged policy neither opens nor resolves; a registry that cannot be read is skipped for that round.
 - **No duplicate incident** (incident ADR-034): the incident is opened under the alert id as idempotency key, so a retry, a lost race or a
   crash between the incident and its link never opens a second one.
 - **Not here yet:** email, paging or per-person routing, several escalation levels, grouping many checks into one incident, closing the
@@ -38,7 +41,7 @@ comes from the verified token.
 
 | Behavior Qualifier | Route |
 |---|---|
-| rule/initiate | `POST /it-alerting/v1/rule/initiate` `{"name":"Production down","checkId":"<uuid, optional>","impact":"HIGH","urgency":"MEDIUM","requesterId":"<uuid>","notifyTarget":"THINKLAB_ALERT_HOOK_OPS","escalateTarget":"THINKLAB_ALERT_HOOK_ONCALL","escalateAfterMinutes":15,"reopenWithinMinutes":30}` (no `checkId` = every check; the four last fields are optional) |
+| rule/initiate | `POST /it-alerting/v1/rule/initiate` `{"name":"Production down","source":"HEALTH_CHECK|BACKUP|PATCH|CAPACITY (optional)","checkId":"<uuid, optional>","impact":"HIGH","urgency":"MEDIUM","requesterId":"<uuid>","notifyTarget":"THINKLAB_ALERT_HOOK_OPS","escalateTarget":"THINKLAB_ALERT_HOOK_ONCALL","escalateAfterMinutes":15,"reopenWithinMinutes":30}` (no `source` = health checks; no `checkId` = every check or policy of that source; the four last fields are optional) |
 | rule/retrieve | `GET /it-alerting/v1/rule/{id}/retrieve` |
 | rule/retrieve (collection) | `GET /it-alerting/v1/rule/retrieve` (oldest first) |
 | rule/update | `PUT /it-alerting/v1/rule/{id}/update` (the whole definition again, in any status) |
@@ -80,7 +83,7 @@ curl -X PUT "http://localhost:8104/it-alerting/v1/evaluation/execute" -H "X-Tena
 
 ## Configuration
 
-`HEALTH_MONITORING_SERVICE_URL` (default `http://localhost:8103`), `INCIDENT_SERVICE_URL` (default `http://localhost:8098`),
+`HEALTH_MONITORING_SERVICE_URL` (default `http://localhost:8103`), `INCIDENT_SERVICE_URL` (default `http://localhost:8098`), `BACKUP_REGISTRY_SERVICE_URL` (8105), `PATCH_REGISTRY_SERVICE_URL` (8106), `CAPACITY_REGISTRY_SERVICE_URL` (8107),
 `thinklab.alerting.scheduler-enabled` (env `THINKLAB_ALERTING_SCHEDULER_ENABLED`, default true: turn it off for an instance that only
 serves the API), `tick` (5s) and `concurrency` (5 tenants at a time). The webhook addresses are environment variables named in the rules
 (`THINKLAB_ALERT_HOOK_<NAME>`, an https address); `THINKLAB_ALERTING_INSECURE_HOSTS` lists hosts that may be plain http (a test double only).

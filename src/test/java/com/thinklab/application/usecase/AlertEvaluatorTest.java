@@ -11,6 +11,7 @@ import com.thinklab.domain.port.HashServicePort;
 import com.thinklab.domain.port.HealthChecksPort;
 import com.thinklab.domain.port.HealthChecksPort.ObservedCheck;
 import com.thinklab.domain.port.IncidentsPort;
+import com.thinklab.domain.port.PromisesPort;
 import com.thinklab.domain.port.IncidentsPort.IncidentDraft;
 import com.thinklab.domain.repository.AlertRepository;
 import com.thinklab.domain.repository.AlertRuleRepository;
@@ -50,6 +51,7 @@ class AlertEvaluatorTest {
     @Mock private AlertRuleRepository rules;
     @Mock private AlertRepository alerts;
     @Mock private HealthChecksPort health;
+    @Mock private PromisesPort promises;
     @Mock private IncidentsPort incidents;
     @Mock private HashServicePort hashService;
     @Mock private MaintenanceWindowRepository windows;
@@ -62,7 +64,7 @@ class AlertEvaluatorTest {
 
     @BeforeEach
     void setUp() {
-        evaluator = new AlertEvaluator(rules, alerts, windows, health, incidents, hashService, dispatcher, Clock.systemUTC());
+        evaluator = new AlertEvaluator(rules, alerts, windows, health, promises, incidents, hashService, dispatcher, Clock.systemUTC());
         lenient().when(windows.findCurrent(any(), any())).thenReturn(Flux.empty());
         lenient().when(alerts.findResolvedSince(any(), any())).thenReturn(Flux.empty());
         lenient().when(alerts.saveIncidentLink(any(), any())).thenReturn(Mono.just(true));

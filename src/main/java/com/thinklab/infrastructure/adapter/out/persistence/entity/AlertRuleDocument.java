@@ -4,6 +4,7 @@ import com.thinklab.domain.model.AlertRule;
 import com.thinklab.domain.model.AlertRule.RuleAuditEntry;
 import com.thinklab.domain.model.AlertRule.RuleStatus;
 import com.thinklab.domain.model.AlertRule.Severity;
+import com.thinklab.domain.model.AlertRule.Source;
 import io.micronaut.core.annotation.Introspected;
 import org.bson.codecs.pojo.annotations.BsonId;
 
@@ -22,6 +23,7 @@ public class AlertRuleDocument {
 
     private UUID organisationId;
     private String name;
+    private String source;
     private UUID checkId;
     private String impact;
     private String urgency;
@@ -41,6 +43,8 @@ public class AlertRuleDocument {
     public void setOrganisationId(UUID organisationId) { this.organisationId = organisationId; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+    public String getSource() { return source; }
+    public void setSource(String source) { this.source = source; }
     public UUID getCheckId() { return checkId; }
     public void setCheckId(UUID checkId) { this.checkId = checkId; }
     public String getImpact() { return impact; }
@@ -89,6 +93,7 @@ public class AlertRuleDocument {
             doc.setId(rule.getId());
             doc.setOrganisationId(rule.getOrganisationId());
             doc.setName(rule.getName());
+            doc.setSource(rule.getSource().name());
             doc.setCheckId(rule.getCheckId());
             doc.setImpact(rule.getImpact().name());
             doc.setUrgency(rule.getUrgency().name());
@@ -105,7 +110,7 @@ public class AlertRuleDocument {
         }
 
         public static AlertRule toDomain(AlertRuleDocument doc) {
-            return AlertRule.reconstitute(doc.getId(), doc.getOrganisationId(), doc.getName(), doc.getCheckId(), Severity.valueOf(doc.getImpact()), Severity.valueOf(doc.getUrgency()),
+            return AlertRule.reconstitute(doc.getId(), doc.getOrganisationId(), doc.getName(), doc.getSource() != null ? Source.valueOf(doc.getSource()) : Source.HEALTH_CHECK, doc.getCheckId(), Severity.valueOf(doc.getImpact()), Severity.valueOf(doc.getUrgency()),
                     doc.getRequesterId(),
                     new AlertRule.Options(doc.getNotifyTarget(), doc.getEscalateTarget(), doc.getEscalateAfterMinutes(), doc.getReopenWithinMinutes()), RuleStatus.valueOf(doc.getStatus()), doc.getCreatedAt(), doc.getUpdatedAt(),
                     doc.getAuditTrail().stream().map(AuditEntryDocument::toDomain).collect(Collectors.toList()));

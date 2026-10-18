@@ -76,6 +76,35 @@ class AlertRuleTest {
     }
 
     @Test
+    @DisplayName("a rule watches one source: a health check rule is the default, and a rule covers a thing only of its own source (ADR-037)")
+    void sources() {
+        UUID policy = UUID.randomUUID();
+        AlertRule backup = AlertRule.createNew(UUID.randomUUID(), org, "Backups", AlertRule.Source.BACKUP, null, Severity.HIGH, Severity.MEDIUM, requester, AlertRule.Options.NONE, "op");
+
+        assertEquals(AlertRule.Source.HEALTH_CHECK, rule(null).getSource());
+        assertEquals("Rule for every check of the tenant.", rule(null).getAuditTrail().get(0).detail());
+        assertEquals("Rule for every backup policy of the tenant.", backup.getAuditTrail().get(0).detail());
+        assertTrue(backup.covers(AlertRule.Source.BACKUP, policy));
+        assertFalse(backup.covers(AlertRule.Source.PATCH, policy));
+        assertFalse(rule(policy).covers(AlertRule.Source.BACKUP, policy));
+        assertTrue(rule(policy).covers(AlertRule.Source.HEALTH_CHECK, policy));
+        assertEquals("capacity policy", AlertRule.Source.CAPACITY.noun());
+        rejects(() -> AlertRule.createNew(UUID.randomUUID(), org, "n", null, null, Severity.HIGH, Severity.MEDIUM, requester, AlertRule.Options.NONE, "op"));
+    }
+
+    @Test
+    @DisplayName("update can move a rule to another source, and keeps the source when it is not told")
+    void updatesTheSource() {
+        AlertRule rule = rule(null);
+
+        rule.update("Production down", AlertRule.Source.PATCH, null, Severity.HIGH, Severity.MEDIUM, requester, AlertRule.Options.NONE, "op");
+        assertEquals(AlertRule.Source.PATCH, rule.getSource());
+        rule.update("Renamed", null, Severity.LOW, Severity.LOW, requester, AlertRule.Options.NONE, "op");
+        assertEquals(AlertRule.Source.PATCH, rule.getSource());
+        rejects(() -> rule.update("n", null, null, Severity.LOW, Severity.LOW, requester, AlertRule.Options.NONE, "op"));
+    }
+
+    @Test
     @DisplayName("update changes the whole definition, in any status, and records it")
     void update() {
         AlertRule rule = rule(null);
@@ -122,6 +151,11 @@ class AlertRuleTest {
                 List.of(new RuleAuditEntry(created, "INITIATED", "op", null, RuleStatus.ACTIVE, "d")));
         assertEquals(RuleStatus.PAUSED, full.getStatus());
         assertEquals(1, full.getAuditTrail().size());
+        assertEquals(AlertRule.Source.HEALTH_CHECK, full.getSource());
+        assertEquals(AlertRule.Source.HEALTH_CHECK, AlertRule.reconstitute(id, org, "n", (AlertRule.Source) null, null, Severity.LOW, Severity.LOW, requester, AlertRule.Options.NONE,
+                null, null, null, null).getSource());
+        assertEquals(AlertRule.Source.CAPACITY, AlertRule.reconstitute(id, org, "n", AlertRule.Source.CAPACITY, null, Severity.LOW, Severity.LOW, requester, AlertRule.Options.NONE,
+                null, null, null, null).getSource());
 
         AlertRule bare = AlertRule.reconstitute(id, org, "n", null, Severity.LOW, Severity.LOW, requester, AlertRule.Options.NONE, null, null, null, null);
         assertEquals(RuleStatus.ACTIVE, bare.getStatus());

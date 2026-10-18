@@ -19,6 +19,7 @@ public class AlertRule {
     private final UUID id;
     private final UUID organisationId;
     private String name;
+    private Source source;
     private UUID checkId;
     private Severity impact;
     private Severity urgency;
@@ -29,10 +30,11 @@ public class AlertRule {
     private Instant updatedAt;
     private final List<RuleAuditEntry> auditTrail;
 
-    private AlertRule(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, String executor) {
+    private AlertRule(UUID id, UUID organisationId, String name, Source source, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, String executor) {
         this.id = id;
         this.organisationId = organisationId;
         this.name = name;
+        this.source = source;
         this.checkId = checkId;
         this.impact = impact;
         this.urgency = urgency;
@@ -42,14 +44,15 @@ public class AlertRule {
         this.createdAt = Instant.now();
         this.updatedAt = this.createdAt;
         this.auditTrail = new ArrayList<>();
-        this.auditTrail.add(new RuleAuditEntry(this.createdAt, "INITIATED", executor, null, RuleStatus.ACTIVE, checkId == null ? "Rule for every check of the tenant." : "Rule for one check."));
+        this.auditTrail.add(new RuleAuditEntry(this.createdAt, "INITIATED", executor, null, RuleStatus.ACTIVE, checkId == null ? "Rule for every " + source.noun() + " of the tenant." : "Rule for one " + source.noun() + "."));
     }
 
-    private AlertRule(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, RuleStatus status,
+    private AlertRule(UUID id, UUID organisationId, String name, Source source, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, RuleStatus status,
                       Instant createdAt, Instant updatedAt, List<RuleAuditEntry> auditTrail) {
         this.id = id;
         this.organisationId = organisationId;
         this.name = name;
+        this.source = source != null ? source : Source.HEALTH_CHECK;
         this.checkId = checkId;
         this.impact = impact;
         this.urgency = urgency;
@@ -61,30 +64,46 @@ public class AlertRule {
         this.auditTrail = auditTrail != null ? new ArrayList<>(auditTrail) : new ArrayList<>();
     }
 
+    /** A rule about health checks, which is what every rule was before the registries could be watched (ADR-037). */
     public static AlertRule createNew(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, String executor) {
+        return createNew(id, organisationId, name, Source.HEALTH_CHECK, checkId, impact, urgency, requesterId, options, executor);
+    }
+
+    public static AlertRule createNew(UUID id, UUID organisationId, String name, Source source, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options,
+                                      String executor) {
         if (id == null || organisationId == null) {
             throw new IllegalArgumentException("ID and Organisation ID are mandatory for AlertRule creation.");
         }
-        validate(name, impact, urgency, requesterId, options);
+        validate(name, source, impact, urgency, requesterId, options);
         requireExecutor(executor);
-        return new AlertRule(id, organisationId, name, checkId, impact, urgency, requesterId, options, executor);
+        return new AlertRule(id, organisationId, name, source, checkId, impact, urgency, requesterId, options, executor);
     }
 
     public static AlertRule reconstitute(UUID id, UUID organisationId, String name, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options, RuleStatus status,
                                          Instant createdAt, Instant updatedAt, List<RuleAuditEntry> auditTrail) {
+        return reconstitute(id, organisationId, name, Source.HEALTH_CHECK, checkId, impact, urgency, requesterId, options, status, createdAt, updatedAt, auditTrail);
+    }
+
+    public static AlertRule reconstitute(UUID id, UUID organisationId, String name, Source source, UUID checkId, Severity impact, Severity urgency, UUID requesterId, Options options,
+                                         RuleStatus status, Instant createdAt, Instant updatedAt, List<RuleAuditEntry> auditTrail) {
         if (id == null || organisationId == null || name == null || impact == null || urgency == null || requesterId == null) {
             throw new IllegalArgumentException("ID, Organisation ID, Name, Impact, Urgency and Requester are mandatory to reconstitute an AlertRule.");
         }
-        return new AlertRule(id, organisationId, name, checkId, impact, urgency, requesterId, options, status, createdAt, updatedAt, auditTrail);
+        return new AlertRule(id, organisationId, name, source, checkId, impact, urgency, requesterId, options, status, createdAt, updatedAt, auditTrail);
     }
 
     // --- Domain Behaviors ---
 
     /** Behavior Qualifier: {@code rule/update}. Everything, in any status. */
     public RuleAuditEntry update(String newName, UUID newCheckId, Severity newImpact, Severity newUrgency, UUID newRequesterId, Options newOptions, String executor) {
-        validate(newName, newImpact, newUrgency, newRequesterId, newOptions);
+        return update(newName, this.source, newCheckId, newImpact, newUrgency, newRequesterId, newOptions, executor);
+    }
+
+    public RuleAuditEntry update(String newName, Source newSource, UUID newCheckId, Severity newImpact, Severity newUrgency, UUID newRequesterId, Options newOptions, String executor) {
+        validate(newName, newSource, newImpact, newUrgency, newRequesterId, newOptions);
         requireExecutor(executor);
         this.name = newName;
+        this.source = newSource;
         this.checkId = newCheckId;
         this.impact = newImpact;
         this.urgency = newUrgency;
@@ -114,6 +133,11 @@ public class AlertRule {
         return this.checkId == null || this.checkId.equals(candidateCheckId);
     }
 
+    /** Does this rule cover that watched thing: from its source, and either named or, with no id, every one of that source? */
+    public boolean covers(Source candidateSource, UUID candidateId) {
+        return this.source == candidateSource && covers(candidateId);
+    }
+
     // --- Internal helpers ---
 
     private RuleAuditEntry record(String action, String executor, RuleStatus from, RuleStatus to, String detail) {
@@ -135,9 +159,12 @@ public class AlertRule {
         }
     }
 
-    private static void validate(String name, Severity impact, Severity urgency, UUID requesterId, Options options) {
+    private static void validate(String name, Source source, Severity impact, Severity urgency, UUID requesterId, Options options) {
         if (name == null || name.isBlank() || name.length() > 80) {
             throw new IllegalArgumentException("Name is mandatory for an AlertRule (up to 80 characters).");
+        }
+        if (source == null) {
+            throw new IllegalArgumentException("The source of the rule is mandatory.");
         }
         if (impact == null || urgency == null) {
             throw new IllegalArgumentException("The impact and the urgency of the incident are mandatory.");
@@ -156,6 +183,7 @@ public class AlertRule {
     public UUID getId() { return id; }
     public UUID getOrganisationId() { return organisationId; }
     public String getName() { return name; }
+    public Source getSource() { return source; }
     public UUID getCheckId() { return checkId; }
     public Severity getImpact() { return impact; }
     public Severity getUrgency() { return urgency; }
@@ -172,6 +200,24 @@ public class AlertRule {
     public enum Severity { LOW, MEDIUM, HIGH }
 
     public enum RuleStatus { ACTIVE, PAUSED }
+
+    /**
+     * What a rule watches (ADR-037): the health checks, or the promises the registries judge when read. For the registries {@code checkId} is the
+     * id of one policy, and left out means every policy of that registry.
+     */
+    public enum Source {
+        HEALTH_CHECK("check"), BACKUP("backup policy"), PATCH("patch policy"), CAPACITY("capacity policy");
+
+        private final String noun;
+
+        Source(String noun) {
+            this.noun = noun;
+        }
+
+        public String noun() {
+            return noun;
+        }
+    }
 
     public record RuleAuditEntry(Instant occurredAt, String action, String executor, RuleStatus fromStatus, RuleStatus toStatus, String detail) {}
 

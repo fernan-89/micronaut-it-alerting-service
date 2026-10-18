@@ -25,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -86,6 +87,24 @@ class AlertingPersistenceIT implements TestPropertyProvider {
         assertNull(rules.findById(first.getId(), UUID.randomUUID()).block());
         assertEquals(List.of("First", "Second"), rules.findAll(organisation).map(AlertRule::getName).collectList().block());
         assertTrue(rules.findAll(UUID.randomUUID()).collectList().block().isEmpty());
+    }
+
+    @Test
+    @DisplayName("a rule keeps the source it watches, a change of source is saved, and a rule stored before sources existed reads as a health check rule (ADR-037)")
+    void ruleSource() {
+        UUID organisation = UUID.randomUUID();
+        AlertRule backups = rules.create(AlertRule.createNew(UUID.randomUUID(), organisation, "Backups", AlertRule.Source.BACKUP, null, Severity.HIGH, Severity.MEDIUM, UUID.randomUUID(),
+                AlertRule.Options.NONE, "op-1")).block();
+        assertEquals(AlertRule.Source.BACKUP, rules.findById(backups.getId(), organisation).block().getSource());
+
+        AlertRule loaded = rules.findById(backups.getId(), organisation).block();
+        var entry = loaded.update("Backups", AlertRule.Source.PATCH, null, Severity.HIGH, Severity.MEDIUM, loaded.getRequesterId(), AlertRule.Options.NONE, "op-1");
+        rules.save(loaded, RuleStatus.ACTIVE, entry).block();
+        assertEquals(AlertRule.Source.PATCH, rules.findById(backups.getId(), organisation).block().getSource());
+
+        AlertRule old = rules.create(newRule(organisation, "Old", null)).block();
+        Mono.from(mongoClient.getDatabase(DATABASE).getCollection("alert_rules").updateOne(new Document("_id", old.getId()), new Document("$unset", new Document("source", "")))).block();
+        assertEquals(AlertRule.Source.HEALTH_CHECK, rules.findById(old.getId(), organisation).block().getSource());
     }
 
     @Test
