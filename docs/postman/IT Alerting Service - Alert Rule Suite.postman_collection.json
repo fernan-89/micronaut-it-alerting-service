@@ -588,7 +588,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
-                  "pm.test('Oldest first', () => pm.expect(pm.response.json().map(r => r.name)).to.eql(['Production down', 'Intranet only', 'Paged']));"
+                  "pm.test('Oldest first', () => pm.expect(pm.response.json().map(r => r.name)).to.eql(['Production down', 'Intranet only', 'Paged', 'Backups']));"
                 ],
                 "type": "text/javascript"
               }
