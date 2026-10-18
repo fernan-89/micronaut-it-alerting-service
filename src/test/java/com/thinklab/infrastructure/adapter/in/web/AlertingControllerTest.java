@@ -79,7 +79,7 @@ class AlertingControllerTest {
     }
 
     private AlertRuleResponse rule() {
-        return new AlertRuleResponse(id, tenant, "Production", null, "HIGH", "MEDIUM", requester, "ACTIVE", null, null, null, 30, Instant.now(), Instant.now());
+        return new AlertRuleResponse(id, tenant, "Production", "HEALTH_CHECK", null, "HIGH", "MEDIUM", requester, "ACTIVE", null, null, null, 30, Instant.now(), Instant.now());
     }
 
     private AlertResponse alert() {
@@ -93,8 +93,8 @@ class AlertingControllerTest {
     @Test
     @DisplayName("the rule write routes delegate with the tenant, the executor and the role")
     void ruleWrites() {
-        var initiateRequest = new InitiateAlertRuleRequest("Production", null, Severity.HIGH, Severity.MEDIUM, requester, null, null, null, null);
-        var updateRequest = new UpdateAlertRuleRequest("Production", null, Severity.LOW, Severity.LOW, requester, null, null, null, null);
+        var initiateRequest = new InitiateAlertRuleRequest("Production", null, null, Severity.HIGH, Severity.MEDIUM, requester, null, null, null, null);
+        var updateRequest = new UpdateAlertRuleRequest("Production", null, null, Severity.LOW, Severity.LOW, requester, null, null, null, null);
         when(initiateRule.execute(tenant, initiateRequest, EXECUTOR, "AGENT")).thenReturn(Mono.just(rule()));
         when(updateRule.execute(id, tenant, updateRequest, EXECUTOR, "AGENT")).thenReturn(Mono.empty());
         when(controlRule.execute(id, tenant, ControlAlertRuleUseCase.Action.PAUSE, EXECUTOR, "AGENT")).thenReturn(Mono.empty());

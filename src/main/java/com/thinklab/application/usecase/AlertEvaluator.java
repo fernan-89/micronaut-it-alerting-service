@@ -8,11 +8,13 @@ import com.thinklab.domain.model.Alert;
 import com.thinklab.domain.model.Alert.AlertStatus;
 import com.thinklab.domain.model.AlertRule;
 import com.thinklab.domain.model.AlertRule.RuleStatus;
+import com.thinklab.domain.model.AlertRule.Source;
 import com.thinklab.domain.model.MaintenanceWindow;
 import com.thinklab.domain.port.HashServicePort;
 import com.thinklab.domain.port.HealthChecksPort;
 import com.thinklab.domain.port.HealthChecksPort.ObservedCheck;
 import com.thinklab.domain.port.IncidentsPort;
+import com.thinklab.domain.port.PromisesPort;
 import com.thinklab.domain.port.IncidentsPort.IncidentDraft;
 import com.thinklab.domain.repository.AlertRepository;
 import com.thinklab.domain.repository.AlertRuleRepository;
@@ -59,17 +61,19 @@ public class AlertEvaluator {
     private final AlertRepository alertRepository;
     private final MaintenanceWindowRepository windowRepository;
     private final HealthChecksPort health;
+    private final PromisesPort promises;
     private final IncidentsPort incidents;
     private final HashServicePort hashService;
     private final NoticeDispatcher dispatcher;
     private final Clock clock;
 
     public AlertEvaluator(AlertRuleRepository ruleRepository, AlertRepository alertRepository, MaintenanceWindowRepository windowRepository, HealthChecksPort health,
-                          IncidentsPort incidents, HashServicePort hashService, NoticeDispatcher dispatcher, Clock clock) {
+                          PromisesPort promises, IncidentsPort incidents, HashServicePort hashService, NoticeDispatcher dispatcher, Clock clock) {
         this.ruleRepository = ruleRepository;
         this.alertRepository = alertRepository;
         this.windowRepository = windowRepository;
         this.health = health;
+        this.promises = promises;
         this.incidents = incidents;
         this.hashService = hashService;
         this.dispatcher = dispatcher;
@@ -116,12 +120,12 @@ public class AlertEvaluator {
 
     public Mono<EvaluationResponse> evaluate(UUID organisationId, String executor) {
         Instant now = Instant.now(clock);
-        return Mono.zip(
-                        ruleRepository.findAll(organisationId).collectList(),
-                        health.list(organisationId).collectMap(ObservedCheck::id, Function.identity()),
+        return ruleRepository.findAll(organisationId).collectList().flatMap(rules -> Mono.zip(
+                        Mono.just(rules),
+                        observe(organisationId, rules),
                         alertRepository.findOpen(organisationId).collectList(),
                         windowRepository.findCurrent(organisationId, now).collectList(),
-                        alertRepository.findResolvedSince(organisationId, now.minus(Duration.ofMinutes(AlertRule.Options.MAX_MINUTES))).collectList())
+                        alertRepository.findResolvedSince(organisationId, now.minus(Duration.ofMinutes(AlertRule.Options.MAX_MINUTES))).collectList()))
                 .flatMap(seen -> {
                     Round round = new Round(organisationId, executor, now, seen.getT1(), seen.getT2(), seen.getT4(), seen.getT3(), seen.getT5());
                     List<Alert> toResolve = List.copyOf(round.open);
@@ -131,6 +135,20 @@ public class AlertEvaluator {
                             .then(Mono.defer(() -> dispatcher.deliver(round.open, round.resolved, round.ruleById, round.windows)))
                             .map(notified -> new EvaluationResponse(round.opened, round.resolvedCount, round.incidentsOpened, round.reopened, notified));
                 });
+    }
+
+    /**
+     * The health checks, plus the policies of each registry that an ACTIVE rule watches (ADR-037). A registry that cannot be read is skipped for this
+     * round: what it had open stays as it is, and the health checks are not held back by it.
+     */
+    private Mono<Map<UUID, ObservedCheck>> observe(UUID organisationId, List<AlertRule> rules) {
+        Flux<ObservedCheck> watched = Flux.fromIterable(rules).filter(rule -> rule.getStatus() == RuleStatus.ACTIVE).map(AlertRule::getSource)
+                .filter(source -> source != Source.HEALTH_CHECK).distinct()
+                .concatMap(source -> promises.list(organisationId, source).onErrorResume(UpstreamUnavailableException.class, failure -> {
+                    log.warn("[ALERTING] The {} registry was skipped in this round: {}", source, failure.getMessage());
+                    return Flux.empty();
+                }));
+        return Flux.concat(health.list(organisationId), watched).collectMap(ObservedCheck::id, Function.identity());
     }
 
     private Mono<Void> resolveIfRecovered(Round round, Alert alert) {
@@ -173,7 +191,7 @@ public class AlertEvaluator {
         if (!check.isDown() || !"ACTIVE".equals(check.status()) || round.hasOpenAlert(check.id()) || round.silenced(check.id())) {
             return Mono.empty();
         }
-        AlertRule rule = round.rules.stream().filter(r -> r.getStatus() == RuleStatus.ACTIVE && r.covers(check.id())).findFirst().orElse(null);
+        AlertRule rule = round.rules.stream().filter(r -> r.getStatus() == RuleStatus.ACTIVE && r.covers(check.source(), check.id())).findFirst().orElse(null);
         if (rule == null) {
             return Mono.empty();
         }
@@ -225,8 +243,11 @@ public class AlertEvaluator {
     }
 
     private Mono<Void> openIncident(Round round, Alert alert, AlertRule rule, ObservedCheck check) {
-        IncidentDraft draft = new IncidentDraft("Health check down: " + check.name(),
-                "The health check " + check.name() + " is down" + (check.error() != null ? " (" + check.error() + ")" : "") + ". Opened by alerting rule " + rule.getName() + ".",
+        boolean health = check.source() == Source.HEALTH_CHECK;
+        String detail = check.error() != null ? " (" + check.error() + ")" : "";
+        IncidentDraft draft = new IncidentDraft((health ? "Health check down: " : "Promise broken: ") + check.name(),
+                (health ? "The health check " + check.name() + " is down" : "The " + check.source().noun() + " " + check.name() + " is not being kept") + detail
+                        + ". Opened by alerting rule " + rule.getName() + ".",
                 rule.getImpact(), rule.getUrgency(), rule.getRequesterId(), check.assetId(), alert.getId().toString());
         return incidents.open(alert.getOrganisationId(), draft)
                 .flatMap(incidentId -> {

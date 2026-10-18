@@ -7,6 +7,6 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Serdeable
-public record AlertRuleResponse(UUID id, UUID organisationId, String name, @Nullable UUID checkId, String impact, String urgency, UUID requesterId, String status,
+public record AlertRuleResponse(UUID id, UUID organisationId, String name, String source, @Nullable UUID checkId, String impact, String urgency, UUID requesterId, String status,
                                 @Nullable String notifyTarget, @Nullable String escalateTarget, @Nullable Integer escalateAfterMinutes, int reopenWithinMinutes,
                                 Instant createdAt, Instant updatedAt) {}

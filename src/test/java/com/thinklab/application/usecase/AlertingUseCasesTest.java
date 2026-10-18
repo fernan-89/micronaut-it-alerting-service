@@ -61,14 +61,17 @@ class AlertingUseCasesTest {
         when(hashService.generateSovereignId("alert-rule-creation")).thenReturn(Mono.just(UUID.randomUUID()));
         when(rules.create(any())).thenAnswer(call -> Mono.just(call.getArgument(0)));
         InitiateAlertRuleUseCase useCase = new InitiateAlertRuleUseCase(hashService, rules);
-        var request = new InitiateAlertRuleRequest("Production", null, Severity.HIGH, Severity.MEDIUM, requester, null, null, null, null);
+        var request = new InitiateAlertRuleRequest("Production", null, null, Severity.HIGH, Severity.MEDIUM, requester, null, null, null, null);
 
         StepVerifier.create(useCase.execute(org, request, "op", "AGENT")).assertNext(response -> {
             assertEquals("ACTIVE", response.status());
             assertEquals("HIGH", response.impact());
             assertNull(response.checkId());
             assertEquals(requester, response.requesterId());
+            assertEquals("HEALTH_CHECK", response.source());
         }).verifyComplete();
+        var backups = new InitiateAlertRuleRequest("Backups", AlertRule.Source.BACKUP, null, Severity.HIGH, Severity.MEDIUM, requester, null, null, null, null);
+        StepVerifier.create(useCase.execute(org, backups, "op", "AGENT")).assertNext(response -> assertEquals("BACKUP", response.source())).verifyComplete();
         StepVerifier.create(useCase.execute(org, request, "op", "REQUESTER")).expectError(AlertAccessDeniedException.class).verify();
     }
 
@@ -82,8 +85,11 @@ class AlertingUseCasesTest {
         UpdateAlertRuleUseCase update = new UpdateAlertRuleUseCase(workflow);
         ControlAlertRuleUseCase control = new ControlAlertRuleUseCase(workflow);
 
-        StepVerifier.create(update.execute(rule.getId(), org, new UpdateAlertRuleRequest("Renamed", null, Severity.LOW, Severity.LOW, requester, null, null, null, null), "op", "AGENT")).verifyComplete();
+        StepVerifier.create(update.execute(rule.getId(), org, new UpdateAlertRuleRequest("Renamed", null, null, Severity.LOW, Severity.LOW, requester, null, null, null, null), "op", "AGENT")).verifyComplete();
         assertEquals("Renamed", rule.getName());
+        assertEquals(AlertRule.Source.HEALTH_CHECK, rule.getSource());
+        StepVerifier.create(update.execute(rule.getId(), org, new UpdateAlertRuleRequest("Renamed", AlertRule.Source.PATCH, null, Severity.LOW, Severity.LOW, requester, null, null, null, null), "op", "AGENT")).verifyComplete();
+        assertEquals(AlertRule.Source.PATCH, rule.getSource());
         StepVerifier.create(control.execute(rule.getId(), org, ControlAlertRuleUseCase.Action.PAUSE, "op", null)).verifyComplete();
         assertEquals(RuleStatus.PAUSED, rule.getStatus());
         StepVerifier.create(control.execute(rule.getId(), org, ControlAlertRuleUseCase.Action.RESUME, "op", null)).verifyComplete();

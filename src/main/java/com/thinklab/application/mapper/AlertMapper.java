@@ -23,7 +23,7 @@ public final class AlertMapper {
 
     public static AlertRuleResponse toResponse(AlertRule rule) {
         AlertRule.Options options = rule.getOptions();
-        return new AlertRuleResponse(rule.getId(), rule.getOrganisationId(), rule.getName(), rule.getCheckId(), rule.getImpact().name(), rule.getUrgency().name(),
+        return new AlertRuleResponse(rule.getId(), rule.getOrganisationId(), rule.getName(), rule.getSource().name(), rule.getCheckId(), rule.getImpact().name(), rule.getUrgency().name(),
                 rule.getRequesterId(), rule.getStatus().name(), options.notifyTarget(), options.escalateTarget(), options.escalateAfterMinutes(),
                 options.reopenWithinMinutes(), rule.getCreatedAt(), rule.getUpdatedAt());
     }

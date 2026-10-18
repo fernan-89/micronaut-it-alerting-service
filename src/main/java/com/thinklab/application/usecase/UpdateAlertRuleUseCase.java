@@ -25,7 +25,7 @@ public class UpdateAlertRuleUseCase {
         log.info("[USE CASE] Updating AlertRule ID: {}", id);
 
         return workflow.apply(id, organisationId, role, "change an alert rule",
-                rule -> rule.update(request.name(), request.checkId(), request.impact(), request.urgency(), request.requesterId(),
+                rule -> rule.update(request.name(), request.source() != null ? request.source() : AlertRule.Source.HEALTH_CHECK, request.checkId(), request.impact(), request.urgency(), request.requesterId(),
                         AlertRule.Options.of(request.notifyTarget(), request.escalateTarget(), request.escalateAfterMinutes(), request.reopenWithinMinutes()), executor));
     }
 }

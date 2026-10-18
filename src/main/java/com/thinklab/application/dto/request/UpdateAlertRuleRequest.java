@@ -1,6 +1,7 @@
 package com.thinklab.application.dto.request;
 
 import com.thinklab.domain.model.AlertRule.Severity;
+import com.thinklab.domain.model.AlertRule.Source;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
 import jakarta.validation.constraints.Max;
@@ -17,6 +18,8 @@ public record UpdateAlertRuleRequest(
         @NotBlank(message = "Name is required")
         @Size(max = 80, message = "Name must not exceed 80 characters")
         String name,
+        /** What the rule watches; left out means the health checks. */
+        @Nullable Source source,
         @Nullable UUID checkId,
         @NotNull(message = "Impact is required") Severity impact,
         @NotNull(message = "Urgency is required") Severity urgency,

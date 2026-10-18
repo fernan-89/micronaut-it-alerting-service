@@ -1,6 +1,7 @@
 package com.thinklab.application.dto.request;
 
 import com.thinklab.domain.model.AlertRule.Severity;
+import com.thinklab.domain.model.AlertRule.Source;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.serde.annotation.Serdeable;
 import jakarta.validation.constraints.Max;
@@ -11,12 +12,14 @@ import jakarta.validation.constraints.Size;
 
 import java.util.UUID;
 
-/** DTO for {@code rule/initiate}. {@code checkId} left out means every check of the tenant; {@code requesterId} is the person the incident is filed for. */
+/** DTO for {@code rule/initiate}. {@code source} left out means the health checks; {@code checkId} left out means every check (or policy) of that source; {@code requesterId} is the person the incident is filed for. */
 @Serdeable
 public record InitiateAlertRuleRequest(
         @NotBlank(message = "Name is required")
         @Size(max = 80, message = "Name must not exceed 80 characters")
         String name,
+        /** What the rule watches; left out means the health checks. */
+        @Nullable Source source,
         @Nullable UUID checkId,
         @NotNull(message = "Impact is required") Severity impact,
         @NotNull(message = "Urgency is required") Severity urgency,

@@ -96,6 +96,12 @@ class AlertRuleMongoAdapterTest {
         AlertRule back = AlertRulePersistenceMapper.toDomain(document);
 
         assertEquals(RuleStatus.PAUSED, back.getStatus());
+        assertEquals(AlertRule.Source.HEALTH_CHECK, back.getSource());
+        assertEquals("HEALTH_CHECK", document.getSource());
+        document.setSource(null);
+        assertEquals(AlertRule.Source.HEALTH_CHECK, AlertRulePersistenceMapper.toDomain(document).getSource());
+        document.setSource("BACKUP");
+        assertEquals(AlertRule.Source.BACKUP, AlertRulePersistenceMapper.toDomain(document).getSource());
         assertEquals(rule.getCheckId(), back.getCheckId());
         assertEquals(rule.getRequesterId(), back.getRequesterId());
         assertEquals(Severity.HIGH, back.getImpact());

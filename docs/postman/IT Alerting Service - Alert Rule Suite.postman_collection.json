@@ -27,7 +27,7 @@
   "info": {
     "_exporter_id": "39879181",
     "_postman_id": "e1f3b5c7-9a2b-4c4d-8e6f-7a8b9c0d1e2f",
-    "description": "Enterprise-grade E2E Postman Suite for the IT Alerting Service Domain (BIAN-aligned, ADR-001/005/013/019/030/031/032/033/034/035/036). Creates a rule for every check and a rule for one check, reads and lists them (oldest first), a rule with webhook notices (only the NAME of the environment variable is kept), an escalation and a reopen time, updates the definition, pauses and resumes a rule, reads the audit ledger in order, lists alerts (none: the tenant has no checks) and runs an evaluation that has nothing to open. A second folder plans, reads, lists, cancels and audits maintenance windows (ADR-035). A third proves the service is staff only (a REQUESTER gets 403 ERR-ALR-00403 on every route). A fourth covers the negative guarantees: validation (blank or long name, missing or unknown impact and urgency, missing requester, malformed check id, an address instead of a variable name, escalation and reopen times out of range, windows that are blank, inverted, in the past or over 30 days, missing tenant), duplicate names (409) on create and on rename, illegal transitions, updating a paused rule, tenant isolation, unknown alerts, an unknown status filter, no way to write an alert by hand and the absence of DELETE, with RFC 7807 error_code assertions. It files everything under its own generated tenant id (alrOrganisationId). Opening an alert and its real incident, the recovery note, the reopening, the silence of a window, the notices and the escalation, the race of simultaneous evaluations, the paused rule and the oldest-rule-wins choice are proved by the platform smoke (alerting-smoke).",
+    "description": "Enterprise-grade E2E Postman Suite for the IT Alerting Service Domain (BIAN-aligned, ADR-001/005/013/019/030/031/032/033/034/035/036/037). Creates a rule for every check and a rule for one check, reads and lists them (oldest first), a rule with webhook notices (only the NAME of the environment variable is kept), an escalation and a reopen time, a rule that watches the backup registry (ADR-037), updates the definition, pauses and resumes a rule, reads the audit ledger in order, lists alerts (none: the tenant has no checks) and runs an evaluation that has nothing to open. A second folder plans, reads, lists, cancels and audits maintenance windows (ADR-035). A third proves the service is staff only (a REQUESTER gets 403 ERR-ALR-00403 on every route). A fourth covers the negative guarantees: validation (blank or long name, missing or unknown impact and urgency, missing requester, malformed check id, an address instead of a variable name, escalation and reopen times out of range, windows that are blank, inverted, in the past or over 30 days, missing tenant), duplicate names (409) on create and on rename, illegal transitions, updating a paused rule, tenant isolation, unknown alerts, an unknown status filter, no way to write an alert by hand and the absence of DELETE, with RFC 7807 error_code assertions. It files everything under its own generated tenant id (alrOrganisationId). Opening an alert and its real incident, the recovery note, the reopening, the silence of a window, the notices and the escalation, the race of simultaneous evaluations, the paused rule and the oldest-rule-wins choice are proved by the platform smoke (alerting-smoke).",
     "name": "IT Alerting Service - Alert Rule Suite",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -356,6 +356,97 @@
                 "initiate"
               ],
               "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Watches backups, for every policy', () => { pm.expect(json.source).to.eql('BACKUP'); pm.expect(json.checkId).to.be.oneOf([null, undefined]); });",
+                  "pm.environment.set('backupRuleId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02b2. Initiate a rule that watches the backup registry (ADR-037)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Backups\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"source\": \"BACKUP\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('HEALTH_CHECK by default', () => pm.expect(pm.response.json().source).to.eql('HEALTH_CHECK'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02b3. A rule with no source watches the health checks",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/retrieve"
             }
           }
         },
@@ -3534,6 +3625,53 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"reopenWithinMinutes\": 1441\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "34. Initiate - Unknown source (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"source\": \"PRINTERS\"\n}"
             },
             "header": [
               {

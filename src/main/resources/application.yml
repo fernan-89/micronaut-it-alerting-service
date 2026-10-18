@@ -34,6 +34,12 @@ micronaut:
         url: ${HASH_SERVICE_URL:`http://localhost:8080`}
       health-monitoring-service:
         url: ${HEALTH_MONITORING_SERVICE_URL:`http://localhost:8103`}
+      backup-registry-service:
+        url: ${BACKUP_REGISTRY_SERVICE_URL:`http://localhost:8105`}
+      patch-registry-service:
+        url: ${PATCH_REGISTRY_SERVICE_URL:`http://localhost:8106`}
+      capacity-registry-service:
+        url: ${CAPACITY_REGISTRY_SERVICE_URL:`http://localhost:8107`}
       incident-service:
         url: ${INCIDENT_SERVICE_URL:`http://localhost:8098`}
 

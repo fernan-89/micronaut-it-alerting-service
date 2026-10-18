@@ -91,6 +91,7 @@ public class AlertRuleMongoRepositoryAdapter implements AlertRuleRepository {
         Bson guard = Filters.and(Filters.eq(FIELD_ID, rule.getId()), Filters.eq(FIELD_ORGANISATION, rule.getOrganisationId()), Filters.eq(FIELD_STATUS, expectedStatus.name()));
         Bson update = Updates.combine(
                 Updates.set("name", rule.getName()),
+                Updates.set("source", rule.getSource().name()),
                 Updates.set("checkId", rule.getCheckId()),
                 Updates.set("impact", rule.getImpact().name()),
                 Updates.set("urgency", rule.getUrgency().name()),
