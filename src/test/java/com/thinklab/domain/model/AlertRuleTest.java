@@ -92,6 +92,7 @@ class AlertRuleTest {
         assertEquals("vendor agreement", AlertRule.Source.VENDOR.noun());
         assertEquals("software licence", AlertRule.Source.LICENSE.noun());
         assertEquals("recovery plan", AlertRule.Source.DR.noun());
+        assertEquals("cloud resource", AlertRule.Source.CLOUD_INVENTORY.noun());
         rejects(() -> AlertRule.createNew(UUID.randomUUID(), org, "n", null, null, Severity.HIGH, Severity.MEDIUM, requester, AlertRule.Options.NONE, "op"));
     }
 

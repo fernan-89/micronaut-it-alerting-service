@@ -1032,6 +1032,55 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Watches the cloud inventory for every resource, and its alerts are AVAILABILITY', () => { pm.expect(json.source).to.eql('CLOUD_INVENTORY'); pm.expect(json.checkId).to.be.oneOf([null, undefined]); pm.expect(json.alertClass).to.eql('AVAILABILITY'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04k. Initiate a rule that watches the cloud inventory (ADR-042)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Cloud resources\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"source\": \"CLOUD_INVENTORY\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
                   "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
                 ],
                 "type": "text/javascript"
