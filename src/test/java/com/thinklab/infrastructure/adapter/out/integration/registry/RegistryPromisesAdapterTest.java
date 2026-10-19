@@ -6,6 +6,7 @@ import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryProm
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.CapacityPolicy;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.LicenseSeats;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.PatchPolicy;
+import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.CloudResourcePresence;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.RecoveryPlanReadiness;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.VendorAgreement;
 import io.micronaut.http.HttpResponse;
@@ -36,7 +37,8 @@ class RegistryPromisesAdapterTest {
     private final VendorApiClient vendor = mock(VendorApiClient.class);
     private final LicenseApiClient license = mock(LicenseApiClient.class);
     private final DrApiClient dr = mock(DrApiClient.class);
-    private final RegistryPromisesAdapter adapter = new RegistryPromisesAdapter(backup, patch, capacity, vendor, license, dr);
+    private final CloudInventoryApiClient inventory = mock(CloudInventoryApiClient.class);
+    private final RegistryPromisesAdapter adapter = new RegistryPromisesAdapter(backup, patch, capacity, vendor, license, dr, inventory);
 
     private BackupPolicy backupPolicy(String status, String protection, String restoreTest) {
         return new BackupPolicy(UUID.randomUUID(), "Nightly", asset, status, protection, restoreTest);
@@ -151,6 +153,30 @@ class RegistryPromisesAdapterTest {
             assertEquals(asset, checks.get(0).assetId());
             assertEquals("PAUSED", checks.get(5).status());
             assertTrue(checks.stream().allMatch(c -> c.source() == Source.DR));
+        }).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("a cloud resource is broken when the tool has not seen it for too long, kept when seen lately or terminated on purpose; a terminated one never opens an alert (ADR-042)")
+    void cloudResources() {
+        UUID missing = UUID.randomUUID();
+        CloudResourcePresence web1 = new CloudResourcePresence(missing, "web-1", "RUNNING", "MISSING");
+        when(inventory.list(tenant.toString(), "system:alerting", 500, "MISSING")).thenReturn(Mono.just(List.of(web1)));
+        when(inventory.list(tenant.toString(), "system:alerting", 500, null)).thenReturn(Mono.just(List.of(
+                new CloudResourcePresence(UUID.randomUUID(), "web-2", "STOPPED", "PRESENT"), web1,
+                new CloudResourcePresence(UUID.randomUUID(), "old", "TERMINATED", "GONE"), new CloudResourcePresence(UUID.randomUUID(), "odd", "RUNNING", "SOMETHING_NEW"))));
+
+        StepVerifier.create(adapter.list(tenant, Source.CLOUD_INVENTORY).collectList()).assertNext(checks -> {
+            assertEquals(4, checks.size());
+            assertEquals(List.of("DOWN", "UP", "UP", "UNKNOWN"), checks.stream().map(c -> c.health()).toList());
+            assertEquals("CLOUD_RESOURCE_MISSING", checks.get(0).error());
+            assertNull(checks.get(1).error());
+            assertNull(checks.get(3).error());
+            assertEquals(missing, checks.get(0).id());
+            assertEquals("web-1", checks.get(0).name());
+            assertNull(checks.get(0).assetId());
+            assertEquals(List.of("ACTIVE", "ACTIVE", "TERMINATED", "ACTIVE"), checks.stream().map(c -> c.status()).toList());
+            assertTrue(checks.stream().allMatch(c -> c.source() == Source.CLOUD_INVENTORY));
         }).verifyComplete();
     }
 

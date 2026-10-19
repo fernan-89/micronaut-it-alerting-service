@@ -37,6 +37,9 @@ outage of one check, opened and resolved by this service itself, never by hand.
 - **Recovery plans that stop being ready are alerted too** (ADR-041): the source `DR` watches the DR registry; `LAST_EXERCISE_FAILED`,
   `OBJECTIVE_MISSED` and `TEST_OVERDUE` are DOWN (`DR_EXERCISE_FAILED`, `DR_OBJECTIVE_MISSED`, `DR_TEST_OVERDUE`), `READY` is UP (a later passing
   exercise resolves the alert), never exercised yet or paused is not judged.
+- **Cloud resources that go missing are alerted too** (ADR-042): the source `CLOUD_INVENTORY` watches the cloud inventory; a resource the discovery tool has
+  not seen for too long (`MISSING`) is DOWN (`CLOUD_RESOURCE_MISSING`), one seen lately is UP, and one reported terminated is UP too (removed on purpose: an
+  alert about it is resolved, and it never opens one). Alerts are `AVAILABILITY` by default.
 - **No duplicate incident** (incident ADR-034): the incident is opened under the alert id as idempotency key, so a retry, a lost race or a
   crash between the incident and its link never opens a second one.
 - **Not here yet:** email, paging or per-person routing, several escalation levels, grouping many checks into one incident, closing the
@@ -49,7 +52,7 @@ comes from the verified token.
 
 | Behavior Qualifier | Route |
 |---|---|
-| rule/initiate | `POST /it-alerting/v1/rule/initiate` `{"name":"Production down","source":"HEALTH_CHECK|BACKUP|PATCH|CAPACITY|VENDOR|LICENSE|DR (optional)","checkId":"<uuid, optional>","impact":"HIGH","urgency":"MEDIUM","requesterId":"<uuid>","notifyTarget":"THINKLAB_ALERT_HOOK_OPS","escalateTarget":"THINKLAB_ALERT_HOOK_ONCALL","escalateAfterMinutes":15,"reopenWithinMinutes":30,"alertClass":"CAPACITY","component":"STORAGE"}` (no `source` = health checks; no `checkId` = every check or policy of that source; the four last fields are optional) |
+| rule/initiate | `POST /it-alerting/v1/rule/initiate` `{"name":"Production down","source":"HEALTH_CHECK|BACKUP|PATCH|CAPACITY|VENDOR|LICENSE|DR|CLOUD_INVENTORY (optional)","checkId":"<uuid, optional>","impact":"HIGH","urgency":"MEDIUM","requesterId":"<uuid>","notifyTarget":"THINKLAB_ALERT_HOOK_OPS","escalateTarget":"THINKLAB_ALERT_HOOK_ONCALL","escalateAfterMinutes":15,"reopenWithinMinutes":30,"alertClass":"CAPACITY","component":"STORAGE"}` (no `source` = health checks; no `checkId` = every check or policy of that source; the four last fields are optional) |
 | rule/retrieve | `GET /it-alerting/v1/rule/{id}/retrieve` |
 | rule/retrieve (collection) | `GET /it-alerting/v1/rule/retrieve` (oldest first) |
 | rule/update | `PUT /it-alerting/v1/rule/{id}/update` (the whole definition again, in any status) |
@@ -91,7 +94,7 @@ curl -X PUT "http://localhost:8104/it-alerting/v1/evaluation/execute" -H "X-Tena
 
 ## Configuration
 
-`HEALTH_MONITORING_SERVICE_URL` (default `http://localhost:8103`), `INCIDENT_SERVICE_URL` (default `http://localhost:8098`), `BACKUP_REGISTRY_SERVICE_URL` (8105), `PATCH_REGISTRY_SERVICE_URL` (8106), `CAPACITY_REGISTRY_SERVICE_URL` (8107), `VENDOR_REGISTRY_SERVICE_URL` (8108), `LICENSE_REGISTRY_SERVICE_URL` (8109), `DR_REGISTRY_SERVICE_URL` (8112),
+`HEALTH_MONITORING_SERVICE_URL` (default `http://localhost:8103`), `INCIDENT_SERVICE_URL` (default `http://localhost:8098`), `BACKUP_REGISTRY_SERVICE_URL` (8105), `PATCH_REGISTRY_SERVICE_URL` (8106), `CAPACITY_REGISTRY_SERVICE_URL` (8107), `VENDOR_REGISTRY_SERVICE_URL` (8108), `LICENSE_REGISTRY_SERVICE_URL` (8109), `DR_REGISTRY_SERVICE_URL` (8112), `CLOUD_INVENTORY_SERVICE_URL` (8113),
 `thinklab.alerting.scheduler-enabled` (env `THINKLAB_ALERTING_SCHEDULER_ENABLED`, default true: turn it off for an instance that only
 serves the API), `tick` (5s) and `concurrency` (5 tenants at a time). The webhook addresses are environment variables named in the rules
 (`THINKLAB_ALERT_HOOK_<NAME>`, an https address); `THINKLAB_ALERTING_INSECURE_HOSTS` lists hosts that may be plain http (a test double only).
@@ -102,7 +105,7 @@ Do not put personal data in a rule name: it is stored with the rule.
 
 001 hexagonal architecture · 005 UUID identity sovereignty and audit tracing · 013 BIAN conventions · 019 HTTP 409 for state conflicts ·
 030 one alert and one incident per outage, found by polling · 031 upstreams through public routes · 032 staff only · 033 guarded writes and
-unique backstops · 034 reopen a resolved alert when the check flaps · 035 maintenance windows · 036 webhook notices and escalation · 037 alert on broken promises · 038 alert on agreements about to end · 039 alert on licences over their limit · 040 alerts are classified from a fixed list · 041 alert on recovery plans that stop being ready.
+unique backstops · 034 reopen a resolved alert when the check flaps · 035 maintenance windows · 036 webhook notices and escalation · 037 alert on broken promises · 038 alert on agreements about to end · 039 alert on licences over their limit · 040 alerts are classified from a fixed list · 041 alert on recovery plans that stop being ready · 042 alert on cloud resources that go missing.
 
 ## License
 

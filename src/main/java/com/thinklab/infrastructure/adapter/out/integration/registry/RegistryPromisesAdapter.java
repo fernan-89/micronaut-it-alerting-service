@@ -8,6 +8,7 @@ import io.micronaut.core.annotation.Introspected;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Header;
+import io.micronaut.http.annotation.QueryValue;
 import io.micronaut.http.client.annotation.Client;
 import io.micronaut.http.client.exceptions.HttpClientResponseException;
 import io.micronaut.serde.annotation.Serdeable;
@@ -17,9 +18,12 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Adapter to the backup, patch, capacity, vendor and licence registries (ADR-037, ADR-038, ADR-039): the policies of a tenant, read through each registry's public route as a service
@@ -34,6 +38,8 @@ public class RegistryPromisesAdapter implements PromisesPort {
     static final String BROKEN = "DOWN";
     static final String KEPT = "UP";
     static final String NOT_JUDGED = "UNKNOWN";
+    /** The most the inventory answers in one read (its own cap): of the missing ones, and of the most recently seen. */
+    static final int INVENTORY_LIMIT = 500;
 
     private final BackupApiClient backup;
     private final PatchApiClient patch;
@@ -41,15 +47,17 @@ public class RegistryPromisesAdapter implements PromisesPort {
     private final VendorApiClient vendor;
     private final LicenseApiClient license;
     private final DrApiClient dr;
+    private final CloudInventoryApiClient inventory;
 
     public RegistryPromisesAdapter(BackupApiClient backup, PatchApiClient patch, CapacityApiClient capacity, VendorApiClient vendor,
-                                   LicenseApiClient license, DrApiClient dr) {
+                                   LicenseApiClient license, DrApiClient dr, CloudInventoryApiClient inventory) {
         this.backup = backup;
         this.patch = patch;
         this.capacity = capacity;
         this.vendor = vendor;
         this.license = license;
         this.dr = dr;
+        this.inventory = inventory;
     }
 
     @Override
@@ -62,8 +70,19 @@ public class RegistryPromisesAdapter implements PromisesPort {
             case VENDOR -> read(source, vendor.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromAgreement);
             case LICENSE -> read(source, license.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromLicense);
             case DR -> read(source, dr.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromRecoveryPlan);
+            case CLOUD_INVENTORY -> read(source, resourcesOf(tenant), RegistryPromisesAdapter::fromCloudResource);
             case HEALTH_CHECK -> throw new IllegalArgumentException("The health checks are read from the health monitor, not from a registry.");
         };
+    }
+
+    /**
+     * The resources that are missing (asked of the inventory itself, since they are the least recently seen and would fall off a list of the most recent
+     * ones) and then the most recently seen ones, which hold what has come back or been terminated since. A resource in both is read once.
+     */
+    private Mono<List<CloudResourcePresence>> resourcesOf(String tenant) {
+        return inventory.list(tenant, EXECUTOR, INVENTORY_LIMIT, "MISSING")
+                .zipWith(inventory.list(tenant, EXECUTOR, INVENTORY_LIMIT, null), (missing, recent) -> Stream.concat(missing.stream(), recent.stream())
+                        .collect(Collectors.toMap(CloudResourcePresence::id, Function.identity(), (first, second) -> first, LinkedHashMap::new)).values().stream().toList());
     }
 
     private <T> Flux<ObservedCheck> read(Source source, Mono<List<T>> call, Function<T, ObservedCheck> told) {
@@ -151,6 +170,23 @@ public class RegistryPromisesAdapter implements PromisesPort {
                 Source.DR);
     }
 
+    /**
+     * A resource of the cloud inventory (ADR-042): one the discovery tool has not seen for too long is a promise broken (nothing may vanish unnoticed),
+     * one seen lately is kept, and one the tool reported terminated is kept too: it was removed on purpose, so an alert about it when it went missing is
+     * resolved. A terminated resource is not ACTIVE, so it never opens one. Only a fixed code is kept; the resource has no asset in this registry.
+     */
+    static ObservedCheck fromCloudResource(CloudResourcePresence resource) {
+        boolean missing = "MISSING".equals(resource.presence());
+        boolean kept = "PRESENT".equals(resource.presence()) || "GONE".equals(resource.presence());
+        String status = "TERMINATED".equals(resource.state()) ? "TERMINATED" : "ACTIVE";
+        return new ObservedCheck(resource.id(), resource.name(), null, missing ? BROKEN : kept ? KEPT : NOT_JUDGED, status, missing ? "CLOUD_RESOURCE_MISSING" : null,
+                Source.CLOUD_INVENTORY);
+    }
+
+    @Serdeable
+    @Introspected
+    public record CloudResourcePresence(UUID id, String name, String state, String presence) {}
+
     @Serdeable
     @Introspected
     public record RecoveryPlanReadiness(UUID id, String name, UUID assetId, String status, String readiness) {}
@@ -200,4 +236,12 @@ interface DrApiClient {
 
     @Get("/retrieve")
     Mono<List<RegistryPromisesAdapter.RecoveryPlanReadiness>> list(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor);
+}
+
+@Client(id = "cloud-inventory-service", path = "/it-cloud-inventory/v1")
+interface CloudInventoryApiClient {
+
+    @Get("/retrieve")
+    Mono<List<RegistryPromisesAdapter.CloudResourcePresence>> list(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor,
+                                                                   @QueryValue("limit") int limit, @QueryValue("presence") @Nullable String presence);
 }

@@ -212,7 +212,8 @@ public class AlertRule {
      */
     public enum Source {
         HEALTH_CHECK("check", AlertClass.AVAILABILITY), BACKUP("backup policy", AlertClass.PROTECTION), PATCH("patch policy", AlertClass.PROTECTION),
-        CAPACITY("capacity policy", AlertClass.CAPACITY), VENDOR("vendor agreement", AlertClass.CONTRACT), LICENSE("software licence", AlertClass.CONTRACT), DR("recovery plan", AlertClass.PROTECTION);
+        CAPACITY("capacity policy", AlertClass.CAPACITY), VENDOR("vendor agreement", AlertClass.CONTRACT), LICENSE("software licence", AlertClass.CONTRACT), DR("recovery plan", AlertClass.PROTECTION),
+        CLOUD_INVENTORY("cloud resource", AlertClass.AVAILABILITY);
 
         private final String noun;
         private final AlertClass defaultClass;
