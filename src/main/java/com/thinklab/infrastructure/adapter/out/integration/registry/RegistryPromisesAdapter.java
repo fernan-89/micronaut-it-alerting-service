@@ -22,7 +22,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * Adapter to the backup, patch, capacity and vendor registries (ADR-037, ADR-038): the policies of a tenant, read through each registry's public route as a service
+ * Adapter to the backup, patch, capacity, vendor and licence registries (ADR-037, ADR-038, ADR-039): the policies of a tenant, read through each registry's public route as a service
  * identity. The registries judge a promise when it is read, so alerting only turns that verdict into DOWN, UP or not judged, with an error from a
  * fixed vocabulary (never a value from the registry). A failure says which registry and which status and never repeats its answer.
  */
@@ -39,12 +39,15 @@ public class RegistryPromisesAdapter implements PromisesPort {
     private final PatchApiClient patch;
     private final CapacityApiClient capacity;
     private final VendorApiClient vendor;
+    private final LicenseApiClient license;
 
-    public RegistryPromisesAdapter(BackupApiClient backup, PatchApiClient patch, CapacityApiClient capacity, VendorApiClient vendor) {
+    public RegistryPromisesAdapter(BackupApiClient backup, PatchApiClient patch, CapacityApiClient capacity, VendorApiClient vendor,
+                                   LicenseApiClient license) {
         this.backup = backup;
         this.patch = patch;
         this.capacity = capacity;
         this.vendor = vendor;
+        this.license = license;
     }
 
     @Override
@@ -55,6 +58,7 @@ public class RegistryPromisesAdapter implements PromisesPort {
             case PATCH -> read(source, patch.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromPatch);
             case CAPACITY -> read(source, capacity.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromCapacity);
             case VENDOR -> read(source, vendor.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromAgreement);
+            case LICENSE -> read(source, license.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromLicense);
             case HEALTH_CHECK -> throw new IllegalArgumentException("The health checks are read from the health monitor, not from a registry.");
         };
     }
@@ -101,6 +105,17 @@ public class RegistryPromisesAdapter implements PromisesPort {
         return new ObservedCheck(agreement.id(), agreement.reference(), agreement.assetId(), health, agreement.status(), error, Source.VENDOR);
     }
 
+    /**
+     * A licence of the licence registry (ADR-039): more seats in use than bought is a promise broken, OK or near the limit is kept (near is a
+     * warning on the screen, not an incident), and no count yet or paused is not judged. Its name is the product.
+     */
+    static ObservedCheck fromLicense(LicenseSeats seats) {
+        boolean over = "OVER_LIMIT".equals(seats.level());
+        boolean kept = "OK".equals(seats.level()) || "NEAR_LIMIT".equals(seats.level());
+        return new ObservedCheck(seats.id(), seats.product(), null, over ? BROKEN : kept ? KEPT : NOT_JUDGED, seats.status(), over ? "LICENSE_OVER_LIMIT" : null,
+                Source.LICENSE);
+    }
+
     @Serdeable
     @Introspected
     public record BackupPolicy(UUID id, String name, UUID assetId, String status, String protection, @Nullable String restoreTest) {}
@@ -116,6 +131,10 @@ public class RegistryPromisesAdapter implements PromisesPort {
     @Serdeable
     @Introspected
     public record VendorAgreement(UUID id, String reference, @Nullable UUID assetId, String status, String standing) {}
+
+    @Serdeable
+    @Introspected
+    public record LicenseSeats(UUID id, String product, String status, String level) {}
 }
 
 @Client(id = "backup-registry-service", path = "/it-backup-registry/v1")
@@ -144,4 +163,11 @@ interface VendorApiClient {
 
     @Get("/agreement/retrieve")
     Mono<List<RegistryPromisesAdapter.VendorAgreement>> list(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor);
+}
+
+@Client(id = "license-registry-service", path = "/it-license-registry/v1")
+interface LicenseApiClient {
+
+    @Get("/retrieve")
+    Mono<List<RegistryPromisesAdapter.LicenseSeats>> list(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor);
 }

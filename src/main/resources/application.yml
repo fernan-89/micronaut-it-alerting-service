@@ -42,6 +42,8 @@ micronaut:
         url: ${CAPACITY_REGISTRY_SERVICE_URL:`http://localhost:8107`}
       vendor-registry-service:
         url: ${VENDOR_REGISTRY_SERVICE_URL:`http://localhost:8108`}
+      license-registry-service:
+        url: ${LICENSE_REGISTRY_SERVICE_URL:`http://localhost:8109`}
       incident-service:
         url: ${INCIDENT_SERVICE_URL:`http://localhost:8098`}
 
