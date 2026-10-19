@@ -983,6 +983,55 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('Watches the DR registry for every plan, and its alerts are PROTECTION', () => { pm.expect(json.source).to.eql('DR'); pm.expect(json.checkId).to.be.oneOf([null, undefined]); pm.expect(json.alertClass).to.eql('PROTECTION'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04j. Initiate a rule that watches the DR registry (ADR-041)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Recovery plans\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"source\": \"DR\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
                   "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
                 ],
                 "type": "text/javascript"
