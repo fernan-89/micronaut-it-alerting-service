@@ -39,6 +39,7 @@ class AlertClassificationTest {
         assertEquals(AlertClass.CAPACITY, Source.CAPACITY.defaultClass());
         assertEquals(AlertClass.CONTRACT, Source.VENDOR.defaultClass());
         assertEquals(AlertClass.CONTRACT, Source.LICENSE.defaultClass());
+        assertEquals(AlertClass.PROTECTION, Source.DR.defaultClass());
         assertEquals(AlertClass.CAPACITY, rule(Source.CAPACITY, Options.NONE).effectiveClass());
         assertNull(rule(Source.CAPACITY, Options.NONE).getOptions().component());
     }
