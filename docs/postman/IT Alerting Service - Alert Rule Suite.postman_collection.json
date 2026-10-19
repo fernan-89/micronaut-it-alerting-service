@@ -669,6 +669,320 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('The class and the component it named', () => { pm.expect(json.alertClass).to.eql('CAPACITY'); pm.expect(json.component).to.eql('STORAGE'); });",
+                  "pm.environment.set('classRuleId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04c. Initiate a rule that names a class and a component (ADR-040)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Disks\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"source\": \"CAPACITY\",\n  \"alertClass\": \"CAPACITY\",\n  \"component\": \"STORAGE\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Kept', () => { pm.expect(json.alertClass).to.eql('CAPACITY'); pm.expect(json.component).to.eql('STORAGE'); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04d. Retrieve it (the same class and component)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{classRuleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{classRuleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Backups are PROTECTION, with no component', () => { pm.expect(json.alertClass).to.eql('PROTECTION'); pm.expect(json.component).to.be.oneOf([null, undefined]); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04e. A rule that names none takes the class of its source and says no component",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{backupRuleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{backupRuleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Health checks are AVAILABILITY', () => pm.expect(pm.response.json().alertClass).to.eql('AVAILABILITY'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04f. A rule with no source is AVAILABILITY",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04g. Update it: another class, no component (204)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Disks\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"source\": \"CAPACITY\",\n  \"alertClass\": \"AVAILABILITY\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{classRuleId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{classRuleId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Replaced', () => { pm.expect(json.alertClass).to.eql('AVAILABILITY'); pm.expect(json.component).to.be.oneOf([null, undefined]); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04h. Retrieve it (the whole definition was replaced, the component is gone)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{classRuleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{classRuleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('None yet, the filters are understood', () => pm.expect(pm.response.json()).to.eql([]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04i. List alerts by class and by component (none, and accepted)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "alertClass",
+                  "value": "CAPACITY"
+                },
+                {
+                  "key": "component",
+                  "value": "STORAGE"
+                }
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/retrieve?alertClass=CAPACITY&component=STORAGE"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
                   "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
                 ],
                 "type": "text/javascript"
@@ -3699,6 +4013,236 @@
                 "initiate"
               ],
               "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "34b. Initiate - Unknown class (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"alertClass\": \"NOPE\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "34c. Initiate - Unknown component (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"component\": \"NOPE\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "34d. Update - Unknown class (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"impact\": \"HIGH\",\n  \"urgency\": \"MEDIUM\",\n  \"requesterId\": \"{{alrRequesterId}}\",\n  \"alertClass\": \"NOPE\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "rule",
+                "{{ruleId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/rule/{{ruleId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "34e. List alerts - Unknown class (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "alertClass",
+                  "value": "NOPE"
+                }
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/retrieve?alertClass=NOPE"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "34f. List alerts - Unknown component (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{alrOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-alerting",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "component",
+                  "value": "NOPE"
+                }
+              ],
+              "raw": "{{base_url}}/it-alerting/v1/retrieve?component=NOPE"
             }
           }
         },
