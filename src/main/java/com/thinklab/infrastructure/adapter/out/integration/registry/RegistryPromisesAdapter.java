@@ -40,14 +40,16 @@ public class RegistryPromisesAdapter implements PromisesPort {
     private final CapacityApiClient capacity;
     private final VendorApiClient vendor;
     private final LicenseApiClient license;
+    private final DrApiClient dr;
 
     public RegistryPromisesAdapter(BackupApiClient backup, PatchApiClient patch, CapacityApiClient capacity, VendorApiClient vendor,
-                                   LicenseApiClient license) {
+                                   LicenseApiClient license, DrApiClient dr) {
         this.backup = backup;
         this.patch = patch;
         this.capacity = capacity;
         this.vendor = vendor;
         this.license = license;
+        this.dr = dr;
     }
 
     @Override
@@ -59,6 +61,7 @@ public class RegistryPromisesAdapter implements PromisesPort {
             case CAPACITY -> read(source, capacity.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromCapacity);
             case VENDOR -> read(source, vendor.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromAgreement);
             case LICENSE -> read(source, license.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromLicense);
+            case DR -> read(source, dr.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromRecoveryPlan);
             case HEALTH_CHECK -> throw new IllegalArgumentException("The health checks are read from the health monitor, not from a registry.");
         };
     }
@@ -132,6 +135,26 @@ public class RegistryPromisesAdapter implements PromisesPort {
     @Introspected
     public record VendorAgreement(UUID id, String reference, @Nullable UUID assetId, String status, String standing) {}
 
+    /**
+     * A recovery plan of the DR registry (ADR-041): one whose latest exercise was partial or failed, whose last measured pass missed the recovery time or
+     * point, or whose next exercise is overdue is a promise broken; a ready one is kept; one never exercised yet (still inside its first interval) or paused is
+     * not judged. A recovery plan covers one asset.
+     */
+    static ObservedCheck fromRecoveryPlan(RecoveryPlanReadiness plan) {
+        String error = switch (plan.readiness()) {
+            case "LAST_EXERCISE_FAILED" -> "DR_EXERCISE_FAILED";
+            case "OBJECTIVE_MISSED" -> "DR_OBJECTIVE_MISSED";
+            case "TEST_OVERDUE" -> "DR_TEST_OVERDUE";
+            default -> null;
+        };
+        return new ObservedCheck(plan.id(), plan.name(), plan.assetId(), error != null ? BROKEN : "READY".equals(plan.readiness()) ? KEPT : NOT_JUDGED, plan.status(), error,
+                Source.DR);
+    }
+
+    @Serdeable
+    @Introspected
+    public record RecoveryPlanReadiness(UUID id, String name, UUID assetId, String status, String readiness) {}
+
     @Serdeable
     @Introspected
     public record LicenseSeats(UUID id, String product, String status, String level) {}
@@ -170,4 +193,11 @@ interface LicenseApiClient {
 
     @Get("/retrieve")
     Mono<List<RegistryPromisesAdapter.LicenseSeats>> list(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor);
+}
+
+@Client(id = "dr-registry-service", path = "/it-dr-registry/v1")
+interface DrApiClient {
+
+    @Get("/retrieve")
+    Mono<List<RegistryPromisesAdapter.RecoveryPlanReadiness>> list(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor);
 }

@@ -6,6 +6,7 @@ import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryProm
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.CapacityPolicy;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.LicenseSeats;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.PatchPolicy;
+import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.RecoveryPlanReadiness;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.VendorAgreement;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
@@ -34,7 +35,8 @@ class RegistryPromisesAdapterTest {
     private final CapacityApiClient capacity = mock(CapacityApiClient.class);
     private final VendorApiClient vendor = mock(VendorApiClient.class);
     private final LicenseApiClient license = mock(LicenseApiClient.class);
-    private final RegistryPromisesAdapter adapter = new RegistryPromisesAdapter(backup, patch, capacity, vendor, license);
+    private final DrApiClient dr = mock(DrApiClient.class);
+    private final RegistryPromisesAdapter adapter = new RegistryPromisesAdapter(backup, patch, capacity, vendor, license, dr);
 
     private BackupPolicy backupPolicy(String status, String protection, String restoreTest) {
         return new BackupPolicy(UUID.randomUUID(), "Nightly", asset, status, protection, restoreTest);
@@ -127,6 +129,28 @@ class RegistryPromisesAdapterTest {
             assertNull(checks.get(0).assetId());
             assertEquals("PAUSED", checks.get(4).status());
             assertTrue(checks.stream().allMatch(c -> c.source() == Source.LICENSE));
+        }).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("a recovery plan is broken when its latest exercise failed, an objective was missed or an exercise is overdue; kept when ready; not judged when never exercised or paused (ADR-041)")
+    void recoveryPlans() {
+        UUID failed = UUID.randomUUID();
+        when(dr.list(tenant.toString(), "system:alerting")).thenReturn(Mono.just(List.of(
+                new RecoveryPlanReadiness(failed, "Orders failover", asset, "ACTIVE", "LAST_EXERCISE_FAILED"), new RecoveryPlanReadiness(UUID.randomUUID(), "Mail", asset, "ACTIVE", "OBJECTIVE_MISSED"),
+                new RecoveryPlanReadiness(UUID.randomUUID(), "Files", asset, "ACTIVE", "TEST_OVERDUE"), new RecoveryPlanReadiness(UUID.randomUUID(), "Web", asset, "ACTIVE", "READY"),
+                new RecoveryPlanReadiness(UUID.randomUUID(), "New", asset, "ACTIVE", "NEVER_TESTED"), new RecoveryPlanReadiness(UUID.randomUUID(), "Old", asset, "PAUSED", "PAUSED"))));
+
+        StepVerifier.create(adapter.list(tenant, Source.DR).collectList()).assertNext(checks -> {
+            assertEquals(List.of("DOWN", "DOWN", "DOWN", "UP", "UNKNOWN", "UNKNOWN"), checks.stream().map(c -> c.health()).toList());
+            assertEquals(List.of("DR_EXERCISE_FAILED", "DR_OBJECTIVE_MISSED", "DR_TEST_OVERDUE"), checks.subList(0, 3).stream().map(c -> c.error()).toList());
+            assertNull(checks.get(3).error());
+            assertNull(checks.get(4).error());
+            assertEquals(failed, checks.get(0).id());
+            assertEquals("Orders failover", checks.get(0).name());
+            assertEquals(asset, checks.get(0).assetId());
+            assertEquals("PAUSED", checks.get(5).status());
+            assertTrue(checks.stream().allMatch(c -> c.source() == Source.DR));
         }).verifyComplete();
     }
 
