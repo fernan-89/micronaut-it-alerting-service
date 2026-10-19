@@ -7,6 +7,7 @@ import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryProm
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.LicenseSeats;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.PatchPolicy;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.CloudResourcePresence;
+import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.PurchaseOrderStanding;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.RecoveryPlanReadiness;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.VendorAgreement;
 import io.micronaut.http.HttpResponse;
@@ -38,7 +39,8 @@ class RegistryPromisesAdapterTest {
     private final LicenseApiClient license = mock(LicenseApiClient.class);
     private final DrApiClient dr = mock(DrApiClient.class);
     private final CloudInventoryApiClient inventory = mock(CloudInventoryApiClient.class);
-    private final RegistryPromisesAdapter adapter = new RegistryPromisesAdapter(backup, patch, capacity, vendor, license, dr, inventory);
+    private final ProcurementApiClient procurement = mock(ProcurementApiClient.class);
+    private final RegistryPromisesAdapter adapter = new RegistryPromisesAdapter(backup, patch, capacity, vendor, license, dr, inventory, procurement);
 
     private BackupPolicy backupPolicy(String status, String protection, String restoreTest) {
         return new BackupPolicy(UUID.randomUUID(), "Nightly", asset, status, protection, restoreTest);
@@ -177,6 +179,29 @@ class RegistryPromisesAdapterTest {
             assertNull(checks.get(0).assetId());
             assertEquals(List.of("ACTIVE", "ACTIVE", "TERMINATED", "ACTIVE"), checks.stream().map(c -> c.status()).toList());
             assertTrue(checks.stream().allMatch(c -> c.source() == Source.CLOUD_INVENTORY));
+        }).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("a purchase order is broken when late, kept when placed and not late or cancelled, and not judged in the other statuses; a cancelled one never opens an alert (ADR-043)")
+    void purchaseOrders() {
+        UUID late = UUID.randomUUID();
+        PurchaseOrderStanding stuck = new PurchaseOrderStanding(late, "PO-1", "ORDERED", true);
+        when(procurement.late(tenant.toString(), "system:alerting", 500)).thenReturn(Mono.just(List.of(stuck)));
+        when(procurement.changed(tenant.toString(), "system:alerting", 30, 500)).thenReturn(Mono.just(List.of(
+                new PurchaseOrderStanding(UUID.randomUUID(), "PO-2", "ORDERED", false), stuck, new PurchaseOrderStanding(UUID.randomUUID(), "PO-3", "CANCELLED", false),
+                new PurchaseOrderStanding(UUID.randomUUID(), "PO-4", "DRAFT", false), new PurchaseOrderStanding(UUID.randomUUID(), "PO-5", "PENDING_APPROVAL", false))));
+
+        StepVerifier.create(adapter.list(tenant, Source.PROCUREMENT).collectList()).assertNext(checks -> {
+            assertEquals(5, checks.size());
+            assertEquals(List.of("DOWN", "UP", "UP", "UNKNOWN", "UNKNOWN"), checks.stream().map(c -> c.health()).toList());
+            assertEquals("PURCHASE_ORDER_LATE", checks.get(0).error());
+            assertNull(checks.get(1).error());
+            assertEquals(late, checks.get(0).id());
+            assertEquals("PO-1", checks.get(0).name());
+            assertNull(checks.get(0).assetId());
+            assertEquals(List.of("ACTIVE", "ACTIVE", "CANCELLED", "ACTIVE", "ACTIVE"), checks.stream().map(c -> c.status()).toList());
+            assertTrue(checks.stream().allMatch(c -> c.source() == Source.PROCUREMENT));
         }).verifyComplete();
     }
 
