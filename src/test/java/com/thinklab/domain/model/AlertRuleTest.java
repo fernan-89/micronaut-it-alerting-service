@@ -90,6 +90,7 @@ class AlertRuleTest {
         assertTrue(rule(policy).covers(AlertRule.Source.HEALTH_CHECK, policy));
         assertEquals("capacity policy", AlertRule.Source.CAPACITY.noun());
         assertEquals("vendor agreement", AlertRule.Source.VENDOR.noun());
+        assertEquals("software licence", AlertRule.Source.LICENSE.noun());
         rejects(() -> AlertRule.createNew(UUID.randomUUID(), org, "n", null, null, Severity.HIGH, Severity.MEDIUM, requester, AlertRule.Options.NONE, "op"));
     }
 

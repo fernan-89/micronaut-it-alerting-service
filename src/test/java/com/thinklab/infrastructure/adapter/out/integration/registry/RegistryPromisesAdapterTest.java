@@ -4,6 +4,7 @@ import com.thinklab.domain.exception.UpstreamUnavailableException;
 import com.thinklab.domain.model.AlertRule.Source;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.BackupPolicy;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.CapacityPolicy;
+import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.LicenseSeats;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.PatchPolicy;
 import com.thinklab.infrastructure.adapter.out.integration.registry.RegistryPromisesAdapter.VendorAgreement;
 import io.micronaut.http.HttpResponse;
@@ -32,7 +33,8 @@ class RegistryPromisesAdapterTest {
     private final PatchApiClient patch = mock(PatchApiClient.class);
     private final CapacityApiClient capacity = mock(CapacityApiClient.class);
     private final VendorApiClient vendor = mock(VendorApiClient.class);
-    private final RegistryPromisesAdapter adapter = new RegistryPromisesAdapter(backup, patch, capacity, vendor);
+    private final LicenseApiClient license = mock(LicenseApiClient.class);
+    private final RegistryPromisesAdapter adapter = new RegistryPromisesAdapter(backup, patch, capacity, vendor, license);
 
     private BackupPolicy backupPolicy(String status, String protection, String restoreTest) {
         return new BackupPolicy(UUID.randomUUID(), "Nightly", asset, status, protection, restoreTest);
@@ -104,6 +106,27 @@ class RegistryPromisesAdapterTest {
             assertEquals(asset, checks.get(0).assetId());
             assertEquals("PAUSED", checks.get(4).status());
             assertTrue(checks.stream().allMatch(c -> c.source() == Source.VENDOR));
+        }).verifyComplete();
+    }
+
+    @Test
+    @DisplayName("a licence is broken when over its limit, kept when OK or only near it, and not judged without a count or when paused (ADR-039)")
+    void licences() {
+        UUID over = UUID.randomUUID();
+        when(license.list(tenant.toString(), "system:alerting")).thenReturn(Mono.just(List.of(
+                new LicenseSeats(over, "Office 365 E3", "ACTIVE", "OVER_LIMIT"), new LicenseSeats(UUID.randomUUID(), "Visio", "ACTIVE", "NEAR_LIMIT"),
+                new LicenseSeats(UUID.randomUUID(), "CAD", "ACTIVE", "OK"), new LicenseSeats(UUID.randomUUID(), "New", "ACTIVE", "NO_DATA"),
+                new LicenseSeats(UUID.randomUUID(), "Old", "PAUSED", "PAUSED"))));
+
+        StepVerifier.create(adapter.list(tenant, Source.LICENSE).collectList()).assertNext(checks -> {
+            assertEquals(List.of("DOWN", "UP", "UP", "UNKNOWN", "UNKNOWN"), checks.stream().map(c -> c.health()).toList());
+            assertEquals("LICENSE_OVER_LIMIT", checks.get(0).error());
+            assertNull(checks.get(1).error());
+            assertEquals(over, checks.get(0).id());
+            assertEquals("Office 365 E3", checks.get(0).name());
+            assertNull(checks.get(0).assetId());
+            assertEquals("PAUSED", checks.get(4).status());
+            assertTrue(checks.stream().allMatch(c -> c.source() == Source.LICENSE));
         }).verifyComplete();
     }
 

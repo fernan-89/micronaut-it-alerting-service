@@ -202,11 +202,11 @@ public class AlertRule {
     public enum RuleStatus { ACTIVE, PAUSED }
 
     /**
-     * What a rule watches (ADR-037, ADR-038): the health checks, or the promises the registries judge when read. For the registries {@code checkId}
+     * What a rule watches (ADR-037, ADR-038, ADR-039): the health checks, or the promises the registries judge when read. For the registries {@code checkId}
      * is the id of one policy (for {@code VENDOR}, one agreement), and left out means every one of that registry.
      */
     public enum Source {
-        HEALTH_CHECK("check"), BACKUP("backup policy"), PATCH("patch policy"), CAPACITY("capacity policy"), VENDOR("vendor agreement");
+        HEALTH_CHECK("check"), BACKUP("backup policy"), PATCH("patch policy"), CAPACITY("capacity policy"), VENDOR("vendor agreement"), LICENSE("software licence");
 
         private final String noun;
 
