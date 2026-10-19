@@ -1,5 +1,7 @@
 package com.thinklab.application.dto.request;
 
+import com.thinklab.domain.model.AlertRule.AlertClass;
+import com.thinklab.domain.model.AlertRule.Component;
 import com.thinklab.domain.model.AlertRule.Severity;
 import com.thinklab.domain.model.AlertRule.Source;
 import io.micronaut.core.annotation.Nullable;
@@ -29,5 +31,9 @@ public record InitiateAlertRuleRequest(
         @Nullable String escalateTarget,
         @Nullable @Min(value = 1, message = "Escalation time must be at least 1 minute") @Max(value = 1440, message = "Escalation time must not exceed 1440 minutes") Integer escalateAfterMinutes,
         /** Minutes after a resolution in which the check going down again reopens that alert (0 = never); left out means 30. */
-        @Nullable @Min(value = 0, message = "Reopen time must not be negative") @Max(value = 1440, message = "Reopen time must not exceed 1440 minutes") Integer reopenWithinMinutes
+        @Nullable @Min(value = 0, message = "Reopen time must not be negative") @Max(value = 1440, message = "Reopen time must not exceed 1440 minutes") Integer reopenWithinMinutes,
+        /** What kind of trouble the rule's alerts are; left out means the class of the source (ADR-040). */
+        @Nullable AlertClass alertClass,
+        /** The part of the estate the rule's alerts are about; left out means unsaid. */
+        @Nullable Component component
 ) {}

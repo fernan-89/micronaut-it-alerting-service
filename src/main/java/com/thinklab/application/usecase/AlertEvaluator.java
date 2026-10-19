@@ -215,7 +215,8 @@ public class AlertEvaluator {
 
     private Mono<Void> openNew(Round round, ObservedCheck check, AlertRule rule) {
         return hashService.generateSovereignId("alert-creation")
-                .map(id -> Alert.createNew(id, round.organisationId, rule.getId(), check.id(), check.name(), check.assetId(), check.error(), round.executor))
+                .map(id -> Alert.createNew(id, round.organisationId, rule.getId(), check.id(), check.name(), check.assetId(), check.error(), round.executor,
+                        rule.effectiveClass(), rule.getOptions().component()))
                 .flatMap(alertRepository::create)
                 .flatMap(alert -> {
                     round.opened++;
@@ -247,7 +248,8 @@ public class AlertEvaluator {
         String detail = check.error() != null ? " (" + check.error() + ")" : "";
         IncidentDraft draft = new IncidentDraft((health ? "Health check down: " : "Promise broken: ") + check.name(),
                 (health ? "The health check " + check.name() + " is down" : "The " + check.source().noun() + " " + check.name() + " is not being kept") + detail
-                        + ". Opened by alerting rule " + rule.getName() + ".",
+                        + ". Opened by alerting rule " + rule.getName() + ". Class: " + rule.effectiveClass()
+                        + (rule.getOptions().component() != null ? ", component: " + rule.getOptions().component() : "") + ".",
                 rule.getImpact(), rule.getUrgency(), rule.getRequesterId(), check.assetId(), alert.getId().toString());
         return incidents.open(alert.getOrganisationId(), draft)
                 .flatMap(incidentId -> {

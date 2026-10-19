@@ -25,7 +25,7 @@ public final class AlertMapper {
         AlertRule.Options options = rule.getOptions();
         return new AlertRuleResponse(rule.getId(), rule.getOrganisationId(), rule.getName(), rule.getSource().name(), rule.getCheckId(), rule.getImpact().name(), rule.getUrgency().name(),
                 rule.getRequesterId(), rule.getStatus().name(), options.notifyTarget(), options.escalateTarget(), options.escalateAfterMinutes(),
-                options.reopenWithinMinutes(), rule.getCreatedAt(), rule.getUpdatedAt());
+                options.reopenWithinMinutes(), rule.effectiveClass().name(), options.component() != null ? options.component().name() : null, rule.getCreatedAt(), rule.getUpdatedAt());
     }
 
     public static AlertResponse toResponse(Alert alert) {
@@ -34,7 +34,8 @@ public final class AlertMapper {
                 alert.getReopenCount(), alert.getReopenedAt(),
                 alert.getNotices().entrySet().stream().sorted(Map.Entry.comparingByKey(Comparator.naturalOrder()))
                         .map(entry -> new NoticeResponse(entry.getKey(), entry.getValue().attempts(), entry.getValue().lastAttemptAt(), entry.getValue().sentAt(), entry.getValue().lastError()))
-                        .toList());
+                        .toList(),
+                alert.getAlertClass() != null ? alert.getAlertClass().name() : null, alert.getComponent() != null ? alert.getComponent().name() : null);
     }
 
     public static MaintenanceWindowResponse toResponse(MaintenanceWindow window) {

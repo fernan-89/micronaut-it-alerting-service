@@ -93,6 +93,12 @@ public class AlertMongoRepositoryAdapter implements AlertRepository {
         if (filter.checkId() != null) {
             filters.add(Filters.eq("checkId", filter.checkId()));
         }
+        if (filter.alertClass() != null) {
+            filters.add(Filters.eq("alertClass", filter.alertClass().name()));
+        }
+        if (filter.component() != null) {
+            filters.add(Filters.eq("component", filter.component().name()));
+        }
         return Flux.from(getCollection().find(Filters.and(filters)).sort(Sorts.descending("openedAt"))).map(AlertPersistenceMapper::toDomain);
     }
 

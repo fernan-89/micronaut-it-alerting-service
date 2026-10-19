@@ -128,6 +128,11 @@ public class AlertRule {
         return record("RESUMED", executor, RuleStatus.PAUSED, RuleStatus.ACTIVE, "Resumed.");
     }
 
+    /** The class its alerts have: the one the rule names, else the one of its source (ADR-040). */
+    public AlertClass effectiveClass() {
+        return options.alertClass() != null ? options.alertClass() : source.defaultClass();
+    }
+
     /** Does this rule cover that check? A rule with no check covers every check of the tenant. */
     public boolean covers(UUID candidateCheckId) {
         return this.checkId == null || this.checkId.equals(candidateCheckId);
@@ -206,18 +211,32 @@ public class AlertRule {
      * is the id of one policy (for {@code VENDOR}, one agreement), and left out means every one of that registry.
      */
     public enum Source {
-        HEALTH_CHECK("check"), BACKUP("backup policy"), PATCH("patch policy"), CAPACITY("capacity policy"), VENDOR("vendor agreement"), LICENSE("software licence");
+        HEALTH_CHECK("check", AlertClass.AVAILABILITY), BACKUP("backup policy", AlertClass.PROTECTION), PATCH("patch policy", AlertClass.PROTECTION),
+        CAPACITY("capacity policy", AlertClass.CAPACITY), VENDOR("vendor agreement", AlertClass.CONTRACT), LICENSE("software licence", AlertClass.CONTRACT);
 
         private final String noun;
+        private final AlertClass defaultClass;
 
-        Source(String noun) {
+        Source(String noun, AlertClass defaultClass) {
             this.noun = noun;
+            this.defaultClass = defaultClass;
         }
 
         public String noun() {
             return noun;
         }
+
+        /** The class an alert of this source has when its rule names none (ADR-040). */
+        public AlertClass defaultClass() {
+            return defaultClass;
+        }
     }
+
+    /** What kind of trouble an alert is, from a fixed list (ADR-040): the service is not answering, a resource is running out, a protection is not kept, a contract is not kept. */
+    public enum AlertClass { AVAILABILITY, CAPACITY, PROTECTION, CONTRACT }
+
+    /** The part of the estate an alert is about, from a fixed list (ADR-040). Optional: a rule that names none leaves it unsaid. */
+    public enum Component { NETWORK, COMPUTE, STORAGE, DATABASE, APPLICATION, SECURITY, CLOUD, OTHER }
 
     public record RuleAuditEntry(Instant occurredAt, String action, String executor, RuleStatus fromStatus, RuleStatus toStatus, String detail) {}
 
@@ -227,16 +246,26 @@ public class AlertRule {
      * {@code escalateAfterMinutes} is how long an incident may stay unacknowledged before the escalation target is told; {@code reopenWithinMinutes}
      * is how soon after a resolution the same check going down again reopens that alert instead of opening a new one (0 = never).
      */
-    public record Options(String notifyTarget, String escalateTarget, Integer escalateAfterMinutes, int reopenWithinMinutes) {
+    public record Options(String notifyTarget, String escalateTarget, Integer escalateAfterMinutes, int reopenWithinMinutes, AlertClass alertClass, Component component) {
 
         public static final Options NONE = new Options(null, null, null, 0);
         public static final int MAX_MINUTES = 1440;
         public static final int DEFAULT_REOPEN_MINUTES = 30;
         private static final String TARGET_PATTERN = "THINKLAB_ALERT_HOOK_[A-Z0-9_]{1,40}";
 
+        /** Without a classification: the class falls back to the one of the source, the component stays unsaid. */
+        public Options(String notifyTarget, String escalateTarget, Integer escalateAfterMinutes, int reopenWithinMinutes) {
+            this(notifyTarget, escalateTarget, escalateAfterMinutes, reopenWithinMinutes, null, null);
+        }
+
         /** The options a request asked for; a reopen time left out is the default. */
         public static Options of(String notifyTarget, String escalateTarget, Integer escalateAfterMinutes, Integer reopenWithinMinutes) {
-            return new Options(notifyTarget, escalateTarget, escalateAfterMinutes, reopenWithinMinutes != null ? reopenWithinMinutes : DEFAULT_REOPEN_MINUTES);
+            return of(notifyTarget, escalateTarget, escalateAfterMinutes, reopenWithinMinutes, null, null);
+        }
+
+        /** The same with the classification the request named (either may be left out). */
+        public static Options of(String notifyTarget, String escalateTarget, Integer escalateAfterMinutes, Integer reopenWithinMinutes, AlertClass alertClass, Component component) {
+            return new Options(notifyTarget, escalateTarget, escalateAfterMinutes, reopenWithinMinutes != null ? reopenWithinMinutes : DEFAULT_REOPEN_MINUTES, alertClass, component);
         }
 
         void validate() {

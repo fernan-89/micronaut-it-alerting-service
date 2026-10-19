@@ -1,6 +1,8 @@
 package com.thinklab.domain.model;
 
 import com.thinklab.domain.exception.InvalidAlertStatusException;
+import com.thinklab.domain.model.AlertRule.AlertClass;
+import com.thinklab.domain.model.AlertRule.Component;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -38,6 +40,8 @@ public class Alert {
     private Instant reopenedAt;
     private final Map<String, Notice> notices;
     private final List<AlertAuditEntry> auditTrail;
+    private AlertClass alertClass;
+    private Component component;
 
     private Alert(UUID id, UUID organisationId, UUID ruleId, UUID checkId, String checkName, UUID assetId, String error, String executor) {
         this.id = id;
@@ -78,6 +82,12 @@ public class Alert {
     }
 
     public static Alert createNew(UUID id, UUID organisationId, UUID ruleId, UUID checkId, String checkName, UUID assetId, String error, String executor) {
+        return createNew(id, organisationId, ruleId, checkId, checkName, assetId, error, executor, null, null);
+    }
+
+    /** An alert that keeps the class and component its rule had when it opened (ADR-040): editing the rule later does not reclassify history. */
+    public static Alert createNew(UUID id, UUID organisationId, UUID ruleId, UUID checkId, String checkName, UUID assetId, String error, String executor, AlertClass alertClass,
+                                  Component component) {
         if (id == null || organisationId == null || ruleId == null || checkId == null) {
             throw new IllegalArgumentException("ID, Organisation ID, Rule ID and Check ID are mandatory for Alert creation.");
         }
@@ -85,16 +95,29 @@ public class Alert {
             throw new IllegalArgumentException("The name of the check is mandatory for an Alert.");
         }
         requireExecutor(executor);
-        return new Alert(id, organisationId, ruleId, checkId, checkName, assetId, error, executor);
+        Alert alert = new Alert(id, organisationId, ruleId, checkId, checkName, assetId, error, executor);
+        alert.alertClass = alertClass;
+        alert.component = component;
+        return alert;
     }
 
     public static Alert reconstitute(UUID id, UUID organisationId, UUID ruleId, UUID checkId, String checkName, UUID assetId, AlertStatus status, Instant openedAt,
                                      Instant resolvedAt, UUID incidentId, String lastError, String problem, Instant updatedAt, int reopenCount, Instant reopenedAt,
                                      Map<String, Notice> notices, List<AlertAuditEntry> auditTrail) {
+        return reconstitute(id, organisationId, ruleId, checkId, checkName, assetId, status, openedAt, resolvedAt, incidentId, lastError, problem, updatedAt, reopenCount, reopenedAt,
+                notices, auditTrail, null, null);
+    }
+
+    public static Alert reconstitute(UUID id, UUID organisationId, UUID ruleId, UUID checkId, String checkName, UUID assetId, AlertStatus status, Instant openedAt,
+                                     Instant resolvedAt, UUID incidentId, String lastError, String problem, Instant updatedAt, int reopenCount, Instant reopenedAt,
+                                     Map<String, Notice> notices, List<AlertAuditEntry> auditTrail, AlertClass alertClass, Component component) {
         if (id == null || organisationId == null || ruleId == null || checkId == null || checkName == null) {
             throw new IllegalArgumentException("ID, Organisation ID, Rule ID, Check ID and Check name are mandatory to reconstitute an Alert.");
         }
-        return new Alert(id, organisationId, ruleId, checkId, checkName, assetId, status, openedAt, resolvedAt, incidentId, lastError, problem, updatedAt, reopenCount, reopenedAt, notices, auditTrail);
+        Alert alert = new Alert(id, organisationId, ruleId, checkId, checkName, assetId, status, openedAt, resolvedAt, incidentId, lastError, problem, updatedAt, reopenCount, reopenedAt, notices, auditTrail);
+        alert.alertClass = alertClass;
+        alert.component = component;
+        return alert;
     }
 
     // --- Domain Behaviors ---
@@ -198,6 +221,9 @@ public class Alert {
     public Instant getUpdatedAt() { return updatedAt; }
     public int getReopenCount() { return reopenCount; }
     public Instant getReopenedAt() { return reopenedAt; }
+    /** Null for an alert opened before classification existed (ADR-040). */
+    public AlertClass getAlertClass() { return alertClass; }
+    public Component getComponent() { return component; }
     public Map<String, Notice> getNotices() { return Collections.unmodifiableMap(notices); }
     public List<AlertAuditEntry> getAuditTrail() { return Collections.unmodifiableList(auditTrail); }
 

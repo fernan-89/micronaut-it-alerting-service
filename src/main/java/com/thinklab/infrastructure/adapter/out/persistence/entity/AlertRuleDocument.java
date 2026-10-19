@@ -32,6 +32,8 @@ public class AlertRuleDocument {
     private String escalateTarget;
     private Integer escalateAfterMinutes;
     private int reopenWithinMinutes;
+    private String alertClass;
+    private String component;
     private String status;
     private Instant createdAt;
     private Instant updatedAt;
@@ -61,6 +63,10 @@ public class AlertRuleDocument {
     public void setEscalateAfterMinutes(Integer escalateAfterMinutes) { this.escalateAfterMinutes = escalateAfterMinutes; }
     public int getReopenWithinMinutes() { return reopenWithinMinutes; }
     public void setReopenWithinMinutes(int reopenWithinMinutes) { this.reopenWithinMinutes = reopenWithinMinutes; }
+    public String getAlertClass() { return alertClass; }
+    public void setAlertClass(String alertClass) { this.alertClass = alertClass; }
+    public String getComponent() { return component; }
+    public void setComponent(String component) { this.component = component; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public Instant getCreatedAt() { return createdAt; }
@@ -102,6 +108,8 @@ public class AlertRuleDocument {
             doc.setEscalateTarget(rule.getOptions().escalateTarget());
             doc.setEscalateAfterMinutes(rule.getOptions().escalateAfterMinutes());
             doc.setReopenWithinMinutes(rule.getOptions().reopenWithinMinutes());
+            doc.setAlertClass(rule.getOptions().alertClass() != null ? rule.getOptions().alertClass().name() : null);
+            doc.setComponent(rule.getOptions().component() != null ? rule.getOptions().component().name() : null);
             doc.setStatus(rule.getStatus().name());
             doc.setCreatedAt(rule.getCreatedAt());
             doc.setUpdatedAt(rule.getUpdatedAt());
@@ -112,7 +120,9 @@ public class AlertRuleDocument {
         public static AlertRule toDomain(AlertRuleDocument doc) {
             return AlertRule.reconstitute(doc.getId(), doc.getOrganisationId(), doc.getName(), doc.getSource() != null ? Source.valueOf(doc.getSource()) : Source.HEALTH_CHECK, doc.getCheckId(), Severity.valueOf(doc.getImpact()), Severity.valueOf(doc.getUrgency()),
                     doc.getRequesterId(),
-                    new AlertRule.Options(doc.getNotifyTarget(), doc.getEscalateTarget(), doc.getEscalateAfterMinutes(), doc.getReopenWithinMinutes()), RuleStatus.valueOf(doc.getStatus()), doc.getCreatedAt(), doc.getUpdatedAt(),
+                    new AlertRule.Options(doc.getNotifyTarget(), doc.getEscalateTarget(), doc.getEscalateAfterMinutes(), doc.getReopenWithinMinutes(),
+                            doc.getAlertClass() != null ? AlertRule.AlertClass.valueOf(doc.getAlertClass()) : null,
+                            doc.getComponent() != null ? AlertRule.Component.valueOf(doc.getComponent()) : null), RuleStatus.valueOf(doc.getStatus()), doc.getCreatedAt(), doc.getUpdatedAt(),
                     doc.getAuditTrail().stream().map(AuditEntryDocument::toDomain).collect(Collectors.toList()));
         }
     }

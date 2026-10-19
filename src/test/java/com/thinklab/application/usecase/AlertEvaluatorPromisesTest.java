@@ -89,6 +89,21 @@ class AlertEvaluatorPromisesTest {
     }
 
     @Test
+    @DisplayName("the incident says the class of the alert, and its component when the rule names one (ADR-040)")
+    void incidentNamesTheClassification() {
+        AlertRule rule = AlertRule.createNew(UUID.randomUUID(), org, "Promises", Source.BACKUP, null, Severity.HIGH, Severity.MEDIUM, requester,
+                AlertRule.Options.of(null, null, null, null, AlertRule.AlertClass.AVAILABILITY, AlertRule.Component.DATABASE), "op");
+        when(rules.findAll(org)).thenReturn(Flux.just(rule));
+        when(promises.list(org, Source.BACKUP)).thenReturn(Flux.just(policy(Source.BACKUP, UUID.randomUUID(), "DOWN", "ACTIVE", "BACKUP_RPO_BREACHED")));
+
+        evaluates(1, 0, 1);
+
+        ArgumentCaptor<IncidentDraft> draft = ArgumentCaptor.forClass(IncidentDraft.class);
+        verify(incidents).open(eq(org), draft.capture());
+        assertEquals("The backup policy Nightly is not being kept (BACKUP_RPO_BREACHED). Opened by alerting rule Promises. Class: AVAILABILITY, component: DATABASE.", draft.getValue().description());
+    }
+
+    @Test
     @DisplayName("a broken promise that a rule of its source covers gets an alert and an incident that says a promise is not being kept")
     void opensForABrokenPromise() {
         AlertRule rule = rule(Source.BACKUP, null);
@@ -100,7 +115,7 @@ class AlertEvaluatorPromisesTest {
         ArgumentCaptor<IncidentDraft> draft = ArgumentCaptor.forClass(IncidentDraft.class);
         verify(incidents).open(eq(org), draft.capture());
         assertEquals("Promise broken: Nightly", draft.getValue().title());
-        assertEquals("The backup policy Nightly is not being kept (BACKUP_RPO_BREACHED). Opened by alerting rule Promises.", draft.getValue().description());
+        assertEquals("The backup policy Nightly is not being kept (BACKUP_RPO_BREACHED). Opened by alerting rule Promises. Class: PROTECTION.", draft.getValue().description());
         assertEquals(assetId, draft.getValue().assetId());
     }
 
