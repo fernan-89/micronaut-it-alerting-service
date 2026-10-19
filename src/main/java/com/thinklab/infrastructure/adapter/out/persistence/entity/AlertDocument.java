@@ -1,6 +1,7 @@
 package com.thinklab.infrastructure.adapter.out.persistence.entity;
 
 import com.thinklab.domain.model.Alert;
+import com.thinklab.domain.model.AlertRule;
 import com.thinklab.domain.model.Alert.AlertAuditEntry;
 import com.thinklab.domain.model.Alert.AlertStatus;
 import com.thinklab.domain.model.Alert.Notice;
@@ -36,6 +37,8 @@ public class AlertDocument {
     private Instant updatedAt;
     private int reopenCount;
     private Instant reopenedAt;
+    private String alertClass;
+    private String component;
     private Map<String, NoticeDocument> notices = new HashMap<>();
     private List<AuditEntryDocument> auditTrail = new ArrayList<>();
 
@@ -69,6 +72,10 @@ public class AlertDocument {
     public void setReopenCount(int reopenCount) { this.reopenCount = reopenCount; }
     public Instant getReopenedAt() { return reopenedAt; }
     public void setReopenedAt(Instant reopenedAt) { this.reopenedAt = reopenedAt; }
+    public String getAlertClass() { return alertClass; }
+    public void setAlertClass(String alertClass) { this.alertClass = alertClass; }
+    public String getComponent() { return component; }
+    public void setComponent(String component) { this.component = component; }
     public Map<String, NoticeDocument> getNotices() { return notices; }
     public void setNotices(Map<String, NoticeDocument> notices) { this.notices = notices; }
     public List<AuditEntryDocument> getAuditTrail() { return auditTrail; }
@@ -121,6 +128,8 @@ public class AlertDocument {
             doc.setUpdatedAt(alert.getUpdatedAt());
             doc.setReopenCount(alert.getReopenCount());
             doc.setReopenedAt(alert.getReopenedAt());
+            doc.setAlertClass(alert.getAlertClass() != null ? alert.getAlertClass().name() : null);
+            doc.setComponent(alert.getComponent() != null ? alert.getComponent().name() : null);
             doc.setNotices(alert.getNotices().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> NoticeDocument.fromDomain(entry.getValue()))));
             doc.setAuditTrail(alert.getAuditTrail().stream().map(AuditEntryDocument::fromDomain).collect(Collectors.toCollection(ArrayList::new)));
             return doc;
@@ -131,7 +140,9 @@ public class AlertDocument {
                     doc.getOpenedAt(), doc.getResolvedAt(), doc.getIncidentId(), doc.getLastError(), doc.getProblem(), doc.getUpdatedAt(),
                     doc.getReopenCount(), doc.getReopenedAt(),
                     doc.getNotices().entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().toDomain())),
-                    doc.getAuditTrail().stream().map(AuditEntryDocument::toDomain).collect(Collectors.toList()));
+                    doc.getAuditTrail().stream().map(AuditEntryDocument::toDomain).collect(Collectors.toList()),
+                    doc.getAlertClass() != null ? AlertRule.AlertClass.valueOf(doc.getAlertClass()) : null,
+                    doc.getComponent() != null ? AlertRule.Component.valueOf(doc.getComponent()) : null);
         }
     }
 }

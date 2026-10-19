@@ -127,6 +127,22 @@ class AlertMongoAdapterTest {
     }
 
     @Test
+    @DisplayName("the class and the component are filters of the list too (ADR-040)")
+    void classificationFilters() {
+        Alert alert = alert();
+        finds(alert);
+        AlertMongoRepositoryAdapter adapter = new AlertMongoRepositoryAdapter(client, URI);
+
+        StepVerifier.create(adapter.findAll(org, new Filter(null, null, com.thinklab.domain.model.AlertRule.AlertClass.CAPACITY, com.thinklab.domain.model.AlertRule.Component.STORAGE)))
+                .expectNextCount(1).verifyComplete();
+
+        ArgumentCaptor<Bson> filter = ArgumentCaptor.forClass(Bson.class);
+        verify(alerts).find(filter.capture());
+        String text = filter.getValue().toString();
+        assertTrue(text.contains("alertClass") && text.contains("CAPACITY") && text.contains("component") && text.contains("STORAGE"));
+    }
+
+    @Test
     @DisplayName("create and the lookups are scoped to the organisation; the filters of the list travel together")
     void lookups() {
         Alert alert = alert();

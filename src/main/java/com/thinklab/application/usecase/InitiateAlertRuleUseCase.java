@@ -33,7 +33,7 @@ public class InitiateAlertRuleUseCase {
         return Mono.fromRunnable(() -> AlertAccess.requireStaff(role, "create an alert rule"))
                 .then(Mono.defer(() -> hashServicePort.generateSovereignId("alert-rule-creation")))
                 .map(id -> AlertRule.createNew(id, organisationId, request.name(), request.source() != null ? request.source() : AlertRule.Source.HEALTH_CHECK, request.checkId(), request.impact(), request.urgency(), request.requesterId(),
-                        AlertRule.Options.of(request.notifyTarget(), request.escalateTarget(), request.escalateAfterMinutes(), request.reopenWithinMinutes()), executor))
+                        AlertRule.Options.of(request.notifyTarget(), request.escalateTarget(), request.escalateAfterMinutes(), request.reopenWithinMinutes(), request.alertClass(), request.component()), executor))
                 .flatMap(repository::create)
                 .map(AlertMapper::toResponse);
     }

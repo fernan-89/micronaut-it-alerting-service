@@ -24,6 +24,8 @@ import com.thinklab.application.usecase.RetrieveMaintenanceWindowUseCase;
 import com.thinklab.application.usecase.RetrieveMaintenanceWindowsUseCase;
 import com.thinklab.application.usecase.UpdateAlertRuleUseCase;
 import com.thinklab.domain.model.Alert.AlertStatus;
+import com.thinklab.domain.model.AlertRule.AlertClass;
+import com.thinklab.domain.model.AlertRule.Component;
 import com.thinklab.domain.repository.AlertRepository;
 import io.micronaut.core.annotation.Nullable;
 import io.micronaut.http.HttpResponse;
@@ -202,11 +204,12 @@ public class AlertingController {
         return Mono.defer(() -> retrieveAlert.execute(id, UUID.fromString(tenantId), role)).map(HttpResponse::ok);
     }
 
-    /** Behavior Qualifier: {@code retrieve} (collection), newest first, by status and by the check it is about. */
+    /** Behavior Qualifier: {@code retrieve} (collection), newest first, by status, by the check it is about, and by class and component. */
     @Get("/retrieve")
     public Mono<List<AlertResponse>> retrieveAll(@Header(TENANT_HEADER) @NotBlank String tenantId, @Header(ROLE_HEADER) @Nullable String role,
-                                                 @QueryValue @Nullable AlertStatus status, @QueryValue @Nullable UUID checkId) {
-        return Mono.defer(() -> retrieveAlerts.execute(UUID.fromString(tenantId), new AlertRepository.Filter(status, checkId), role).collectList());
+                                                 @QueryValue @Nullable AlertStatus status, @QueryValue @Nullable UUID checkId, @QueryValue @Nullable AlertClass alertClass,
+                                                 @QueryValue @Nullable Component component) {
+        return Mono.defer(() -> retrieveAlerts.execute(UUID.fromString(tenantId), new AlertRepository.Filter(status, checkId, alertClass, component), role).collectList());
     }
 
     /** Behavior Qualifier: {@code audit-log/retrieve}. When it opened, when its incident did, when it resolved. */

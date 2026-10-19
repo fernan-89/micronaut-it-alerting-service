@@ -3,6 +3,8 @@ package com.thinklab.domain.repository;
 import com.thinklab.domain.model.Alert;
 import com.thinklab.domain.model.Alert.AlertAuditEntry;
 import com.thinklab.domain.model.Alert.AlertStatus;
+import com.thinklab.domain.model.AlertRule.AlertClass;
+import com.thinklab.domain.model.AlertRule.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
@@ -48,6 +50,11 @@ public interface AlertRepository {
     /** The tenants that have an OPEN alert: their alerts must still be resolved when the check recovers, even if every rule was paused since. */
     Flux<UUID> openTenants();
 
-    record Filter(AlertStatus status, UUID checkId) {
+    record Filter(AlertStatus status, UUID checkId, AlertClass alertClass, Component component) {
+
+        /** Without a classification. */
+        public Filter(AlertStatus status, UUID checkId) {
+            this(status, checkId, null, null);
+        }
     }
 }

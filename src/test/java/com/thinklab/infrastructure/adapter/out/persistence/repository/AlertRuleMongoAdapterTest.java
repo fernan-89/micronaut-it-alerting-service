@@ -178,6 +178,23 @@ class AlertRuleMongoAdapterTest {
     }
 
     @Test
+    @DisplayName("saving a classified rule writes its class and component")
+    void saveClassified() {
+        AlertRule rule = AlertRule.createNew(UUID.randomUUID(), org, "Disks", AlertRule.Source.CAPACITY, null, Severity.HIGH, Severity.MEDIUM, UUID.randomUUID(),
+                AlertRule.Options.of(null, null, null, null, AlertRule.AlertClass.CAPACITY, AlertRule.Component.STORAGE), "op");
+        rule.pause("op");
+        when(rules.updateOne(any(Bson.class), any(Bson.class))).thenReturn(Mono.just(UpdateResult.acknowledged(1, 1L, null)));
+        AlertRuleMongoRepositoryAdapter adapter = new AlertRuleMongoRepositoryAdapter(client, URI);
+
+        StepVerifier.create(adapter.save(rule, RuleStatus.ACTIVE, rule.getAuditTrail().get(1))).verifyComplete();
+
+        ArgumentCaptor<Bson> update = ArgumentCaptor.forClass(Bson.class);
+        verify(rules).updateOne(any(Bson.class), update.capture());
+        String text = update.getValue().toString();
+        assertTrue(text.contains("alertClass") && text.contains("STORAGE"));
+    }
+
+    @Test
     @DisplayName("the tenants with an active rule are the distinct organisations of ACTIVE rules")
     void activeTenants() {
         DistinctPublisher<UUID> publisher = mock(DistinctPublisher.class);

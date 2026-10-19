@@ -10,4 +10,5 @@ import java.util.UUID;
 @Serdeable
 public record AlertResponse(UUID id, UUID organisationId, UUID ruleId, UUID checkId, String checkName, @Nullable UUID assetId, String status, Instant openedAt,
                             @Nullable Instant resolvedAt, @Nullable UUID incidentId, @Nullable String lastError, @Nullable String problem, Instant updatedAt,
-                            int reopenCount, @Nullable Instant reopenedAt, List<NoticeResponse> notices) {}
+                            int reopenCount, @Nullable Instant reopenedAt, List<NoticeResponse> notices,
+                            @Nullable String alertClass, @Nullable String component) {}

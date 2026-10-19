@@ -23,6 +23,7 @@ outage of one check, opened and resolved by this service itself, never by hand.
   and with its incident still being worked, the same alert is reopened and the incident gets a note; a finished incident means a new alert.
 - **Maintenance windows silence a check** (ADR-035): while a window covers it no alert is opened or reopened and no opened, reopened or escalation notice is sent; a
   recovery is still recorded and announced. A window is cancelled, never edited.
+- **Alerts are classified from a fixed list** (ADR-040): a rule may name an `alertClass` (`AVAILABILITY`, `CAPACITY`, `PROTECTION`, `CONTRACT`; left out means the one of its source) and a `component` (`NETWORK`, `COMPUTE`, `STORAGE`, `DATABASE`, `APPLICATION`, `SECURITY`, `CLOUD`, `OTHER`; optional). An alert keeps the classification its rule had when it opened, the incident description says it, and `GET /retrieve` filters on `alertClass` and `component`. Alerts opened before this have none.
 - **People are told through webhooks** (ADR-036): a rule names an environment variable (`THINKLAB_ALERT_HOOK_...`, never the address) for the
   opened, reopened and resolved notices, and a second one for an **escalation** when the incident is still `NEW` after `escalateAfterMinutes`.
   Sent once whatever the number of instances, https only, a failure is kept on the alert and never fails the evaluation.
@@ -45,7 +46,7 @@ comes from the verified token.
 
 | Behavior Qualifier | Route |
 |---|---|
-| rule/initiate | `POST /it-alerting/v1/rule/initiate` `{"name":"Production down","source":"HEALTH_CHECK|BACKUP|PATCH|CAPACITY|VENDOR|LICENSE (optional)","checkId":"<uuid, optional>","impact":"HIGH","urgency":"MEDIUM","requesterId":"<uuid>","notifyTarget":"THINKLAB_ALERT_HOOK_OPS","escalateTarget":"THINKLAB_ALERT_HOOK_ONCALL","escalateAfterMinutes":15,"reopenWithinMinutes":30}` (no `source` = health checks; no `checkId` = every check or policy of that source; the four last fields are optional) |
+| rule/initiate | `POST /it-alerting/v1/rule/initiate` `{"name":"Production down","source":"HEALTH_CHECK|BACKUP|PATCH|CAPACITY|VENDOR|LICENSE (optional)","checkId":"<uuid, optional>","impact":"HIGH","urgency":"MEDIUM","requesterId":"<uuid>","notifyTarget":"THINKLAB_ALERT_HOOK_OPS","escalateTarget":"THINKLAB_ALERT_HOOK_ONCALL","escalateAfterMinutes":15,"reopenWithinMinutes":30,"alertClass":"CAPACITY","component":"STORAGE"}` (no `source` = health checks; no `checkId` = every check or policy of that source; the four last fields are optional) |
 | rule/retrieve | `GET /it-alerting/v1/rule/{id}/retrieve` |
 | rule/retrieve (collection) | `GET /it-alerting/v1/rule/retrieve` (oldest first) |
 | rule/update | `PUT /it-alerting/v1/rule/{id}/update` (the whole definition again, in any status) |

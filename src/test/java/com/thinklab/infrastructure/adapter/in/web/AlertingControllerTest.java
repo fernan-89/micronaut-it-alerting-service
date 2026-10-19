@@ -79,11 +79,11 @@ class AlertingControllerTest {
     }
 
     private AlertRuleResponse rule() {
-        return new AlertRuleResponse(id, tenant, "Production", "HEALTH_CHECK", null, "HIGH", "MEDIUM", requester, "ACTIVE", null, null, null, 30, Instant.now(), Instant.now());
+        return new AlertRuleResponse(id, tenant, "Production", "HEALTH_CHECK", null, "HIGH", "MEDIUM", requester, "ACTIVE", null, null, null, 30, "AVAILABILITY", null, Instant.now(), Instant.now());
     }
 
     private AlertResponse alert() {
-        return new AlertResponse(id, tenant, UUID.randomUUID(), UUID.randomUUID(), "Intranet", null, "OPEN", Instant.now(), null, null, "timeout", null, Instant.now(), 0, null, List.of());
+        return new AlertResponse(id, tenant, UUID.randomUUID(), UUID.randomUUID(), "Intranet", null, "OPEN", Instant.now(), null, null, "timeout", null, Instant.now(), 0, null, List.of(), null, null);
     }
 
     private List<AuditEntryResponse> trail() {
@@ -93,8 +93,8 @@ class AlertingControllerTest {
     @Test
     @DisplayName("the rule write routes delegate with the tenant, the executor and the role")
     void ruleWrites() {
-        var initiateRequest = new InitiateAlertRuleRequest("Production", null, null, Severity.HIGH, Severity.MEDIUM, requester, null, null, null, null);
-        var updateRequest = new UpdateAlertRuleRequest("Production", null, null, Severity.LOW, Severity.LOW, requester, null, null, null, null);
+        var initiateRequest = new InitiateAlertRuleRequest("Production", null, null, Severity.HIGH, Severity.MEDIUM, requester, null, null, null, null, null, null);
+        var updateRequest = new UpdateAlertRuleRequest("Production", null, null, Severity.LOW, Severity.LOW, requester, null, null, null, null, null, null);
         when(initiateRule.execute(tenant, initiateRequest, EXECUTOR, "AGENT")).thenReturn(Mono.just(rule()));
         when(updateRule.execute(id, tenant, updateRequest, EXECUTOR, "AGENT")).thenReturn(Mono.empty());
         when(controlRule.execute(id, tenant, ControlAlertRuleUseCase.Action.PAUSE, EXECUTOR, "AGENT")).thenReturn(Mono.empty());
@@ -128,7 +128,7 @@ class AlertingControllerTest {
         when(alertAuditLog.execute(id, tenant, "AGENT")).thenReturn(Mono.just(trail()));
 
         StepVerifier.create(controller.retrieve(id, tenantHeader, "AGENT")).assertNext(r -> assertEquals(HttpStatus.OK, r.getStatus())).verifyComplete();
-        StepVerifier.create(controller.retrieveAll(tenantHeader, "AGENT", AlertStatus.OPEN, check)).assertNext(list -> assertEquals(1, list.size())).verifyComplete();
+        StepVerifier.create(controller.retrieveAll(tenantHeader, "AGENT", AlertStatus.OPEN, check, null, null)).assertNext(list -> assertEquals(1, list.size())).verifyComplete();
         StepVerifier.create(controller.alertAuditLog(id, tenantHeader, "AGENT")).assertNext(list -> assertEquals(1, list.size())).verifyComplete();
     }
 
