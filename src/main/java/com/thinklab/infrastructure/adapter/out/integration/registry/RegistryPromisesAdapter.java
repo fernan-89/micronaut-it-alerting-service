@@ -40,6 +40,8 @@ public class RegistryPromisesAdapter implements PromisesPort {
     static final String NOT_JUDGED = "UNKNOWN";
     /** The most the inventory answers in one read (its own cap): of the missing ones, and of the most recently seen. */
     static final int INVENTORY_LIMIT = 500;
+    /** The days within which a purchase order must have changed to be read for a verdict other than late: what was received or cancelled since. */
+    static final int ORDERS_CHANGED_WITHIN_DAYS = 30;
 
     private final BackupApiClient backup;
     private final PatchApiClient patch;
@@ -48,9 +50,10 @@ public class RegistryPromisesAdapter implements PromisesPort {
     private final LicenseApiClient license;
     private final DrApiClient dr;
     private final CloudInventoryApiClient inventory;
+    private final ProcurementApiClient procurement;
 
     public RegistryPromisesAdapter(BackupApiClient backup, PatchApiClient patch, CapacityApiClient capacity, VendorApiClient vendor,
-                                   LicenseApiClient license, DrApiClient dr, CloudInventoryApiClient inventory) {
+                                   LicenseApiClient license, DrApiClient dr, CloudInventoryApiClient inventory, ProcurementApiClient procurement) {
         this.backup = backup;
         this.patch = patch;
         this.capacity = capacity;
@@ -58,6 +61,7 @@ public class RegistryPromisesAdapter implements PromisesPort {
         this.license = license;
         this.dr = dr;
         this.inventory = inventory;
+        this.procurement = procurement;
     }
 
     @Override
@@ -71,6 +75,7 @@ public class RegistryPromisesAdapter implements PromisesPort {
             case LICENSE -> read(source, license.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromLicense);
             case DR -> read(source, dr.list(tenant, EXECUTOR), RegistryPromisesAdapter::fromRecoveryPlan);
             case CLOUD_INVENTORY -> read(source, resourcesOf(tenant), RegistryPromisesAdapter::fromCloudResource);
+            case PROCUREMENT -> read(source, ordersOf(tenant), RegistryPromisesAdapter::fromPurchaseOrder);
             case HEALTH_CHECK -> throw new IllegalArgumentException("The health checks are read from the health monitor, not from a registry.");
         };
     }
@@ -83,6 +88,16 @@ public class RegistryPromisesAdapter implements PromisesPort {
         return inventory.list(tenant, EXECUTOR, INVENTORY_LIMIT, "MISSING")
                 .zipWith(inventory.list(tenant, EXECUTOR, INVENTORY_LIMIT, null), (missing, recent) -> Stream.concat(missing.stream(), recent.stream())
                         .collect(Collectors.toMap(CloudResourcePresence::id, Function.identity(), (first, second) -> first, LinkedHashMap::new)).values().stream().toList());
+    }
+
+    /**
+     * The purchase orders that are late (asked of the procurement registry itself, so they are never cut off a list of the most recent ones) and then the orders
+     * that changed within the last {@value #ORDERS_CHANGED_WITHIN_DAYS} days, which hold what was received or cancelled since an alert opened. One in both is read once.
+     */
+    private Mono<List<PurchaseOrderStanding>> ordersOf(String tenant) {
+        return procurement.late(tenant, EXECUTOR, INVENTORY_LIMIT)
+                .zipWith(procurement.changed(tenant, EXECUTOR, ORDERS_CHANGED_WITHIN_DAYS, INVENTORY_LIMIT), (late, changed) -> Stream.concat(late.stream(), changed.stream())
+                        .collect(Collectors.toMap(PurchaseOrderStanding::id, Function.identity(), (first, second) -> first, LinkedHashMap::new)).values().stream().toList());
     }
 
     private <T> Flux<ObservedCheck> read(Source source, Mono<List<T>> call, Function<T, ObservedCheck> told) {
@@ -183,6 +198,22 @@ public class RegistryPromisesAdapter implements PromisesPort {
                 Source.CLOUD_INVENTORY);
     }
 
+    /**
+     * A purchase order of the procurement registry (ADR-043): one that is placed, not completely received and past its expected day is a promise broken (the
+     * vendor owes goods); one placed and not late is kept, and so is one that was cancelled (nothing is owed any more: an alert about it is resolved, and, being
+     * cancelled, it never opens one). A draft, one waiting for approval, approved or rejected is not judged. Only a fixed code is kept; the order has no asset.
+     */
+    static ObservedCheck fromPurchaseOrder(PurchaseOrderStanding order) {
+        boolean late = order.late();
+        boolean kept = "CANCELLED".equals(order.status()) || ("ORDERED".equals(order.status()) && !late);
+        String status = "CANCELLED".equals(order.status()) ? "CANCELLED" : "ACTIVE";
+        return new ObservedCheck(order.id(), order.reference(), null, late ? BROKEN : kept ? KEPT : NOT_JUDGED, status, late ? "PURCHASE_ORDER_LATE" : null, Source.PROCUREMENT);
+    }
+
+    @Serdeable
+    @Introspected
+    public record PurchaseOrderStanding(UUID id, String reference, String status, boolean late) {}
+
     @Serdeable
     @Introspected
     public record CloudResourcePresence(UUID id, String name, String state, String presence) {}
@@ -244,4 +275,15 @@ interface CloudInventoryApiClient {
     @Get("/retrieve")
     Mono<List<RegistryPromisesAdapter.CloudResourcePresence>> list(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor,
                                                                    @QueryValue("limit") int limit, @QueryValue("presence") @Nullable String presence);
+}
+
+@Client(id = "procurement-service", path = "/it-procurement/v1")
+interface ProcurementApiClient {
+
+    @Get("/retrieve?late=true")
+    Mono<List<RegistryPromisesAdapter.PurchaseOrderStanding>> late(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor, @QueryValue("limit") int limit);
+
+    @Get("/retrieve")
+    Mono<List<RegistryPromisesAdapter.PurchaseOrderStanding>> changed(@Header("X-Tenant-Id") String tenant, @Header("X-Executor") String executor,
+                                                                      @QueryValue("changedWithinDays") int days, @QueryValue("limit") int limit);
 }

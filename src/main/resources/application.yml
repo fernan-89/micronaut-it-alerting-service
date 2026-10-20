@@ -48,6 +48,8 @@ micronaut:
         url: ${DR_REGISTRY_SERVICE_URL:`http://localhost:8112`}
       cloud-inventory-service:
         url: ${CLOUD_INVENTORY_SERVICE_URL:`http://localhost:8113`}
+      procurement-service:
+        url: ${PROCUREMENT_SERVICE_URL:`http://localhost:8114`}
       incident-service:
         url: ${INCIDENT_SERVICE_URL:`http://localhost:8098`}
 
