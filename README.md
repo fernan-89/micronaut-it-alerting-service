@@ -27,6 +27,11 @@ outage of one check, opened and resolved by this service itself, never by hand.
 - **People are told through webhooks** (ADR-036): a rule names an environment variable (`THINKLAB_ALERT_HOOK_...`, never the address) for the
   opened, reopened and resolved notices, and a second one for an **escalation** when the incident is still `NEW` after `escalateAfterMinutes`.
   Sent once whatever the number of instances, https only, a failure is kept on the alert and never fails the evaluation.
+- **Alerting reads every registry through one contract** (ADR-044, platform ADR-001): each registry judges its own promises and answers
+  `GET <registry>/promises/retrieve?changedWithinDays=&limit=` with a verdict (`BROKEN`, `KEPT`, `NOT_JUDGED`), a fixed code when broken, its status and
+  when it changed; alerting only turns `BROKEN` into DOWN, `KEPT` into UP, and the code into the alert's error. A new source is an entry of
+  `thinklab.alerting.registries.<SOURCE>` (the service address and the BIAN path) and a line in the source list of the domain: no client, no DTO, no mapping
+  of a registry's fields. What follows describes what each source means; the judgement itself now lives in the registry.
 - **Broken promises are alerted too** (ADR-037): a rule has a `source` (`HEALTH_CHECK` by default, `BACKUP`, `PATCH`, `CAPACITY`); the backup, patch and capacity
   registries are read only while an ACTIVE rule watches them, and an RPO breach (or overdue restore test), an overdue patch or a CRITICAL capacity policy is a
   DOWN thing with a fixed error code. A paused or not yet judged policy neither opens nor resolves; a registry that cannot be read is skipped for that round.
@@ -108,7 +113,7 @@ Do not put personal data in a rule name: it is stored with the rule.
 
 001 hexagonal architecture · 005 UUID identity sovereignty and audit tracing · 013 BIAN conventions · 019 HTTP 409 for state conflicts ·
 030 one alert and one incident per outage, found by polling · 031 upstreams through public routes · 032 staff only · 033 guarded writes and
-unique backstops · 034 reopen a resolved alert when the check flaps · 035 maintenance windows · 036 webhook notices and escalation · 037 alert on broken promises · 038 alert on agreements about to end · 039 alert on licences over their limit · 040 alerts are classified from a fixed list · 041 alert on recovery plans that stop being ready · 042 alert on cloud resources that go missing · 043 alert on purchase orders that are late.
+unique backstops · 034 reopen a resolved alert when the check flaps · 035 maintenance windows · 036 webhook notices and escalation · 037 alert on broken promises · 038 alert on agreements about to end · 039 alert on licences over their limit · 040 alerts are classified from a fixed list · 041 alert on recovery plans that stop being ready · 042 alert on cloud resources that go missing · 043 alert on purchase orders that are late · 044 alerting reads the promises contract.
 
 ## License
 

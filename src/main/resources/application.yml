@@ -34,22 +34,6 @@ micronaut:
         url: ${HASH_SERVICE_URL:`http://localhost:8080`}
       health-monitoring-service:
         url: ${HEALTH_MONITORING_SERVICE_URL:`http://localhost:8103`}
-      backup-registry-service:
-        url: ${BACKUP_REGISTRY_SERVICE_URL:`http://localhost:8105`}
-      patch-registry-service:
-        url: ${PATCH_REGISTRY_SERVICE_URL:`http://localhost:8106`}
-      capacity-registry-service:
-        url: ${CAPACITY_REGISTRY_SERVICE_URL:`http://localhost:8107`}
-      vendor-registry-service:
-        url: ${VENDOR_REGISTRY_SERVICE_URL:`http://localhost:8108`}
-      license-registry-service:
-        url: ${LICENSE_REGISTRY_SERVICE_URL:`http://localhost:8109`}
-      dr-registry-service:
-        url: ${DR_REGISTRY_SERVICE_URL:`http://localhost:8112`}
-      cloud-inventory-service:
-        url: ${CLOUD_INVENTORY_SERVICE_URL:`http://localhost:8113`}
-      procurement-service:
-        url: ${PROCUREMENT_SERVICE_URL:`http://localhost:8114`}
       incident-service:
         url: ${INCIDENT_SERVICE_URL:`http://localhost:8098`}
 
@@ -207,3 +191,30 @@ thinklab:
     concurrency: 5
     # Hosts a notice webhook may be reached at over plain http (a test double); empty in a real deployment: https only (ADR-036).
     insecure-hosts: ${THINKLAB_ALERTING_INSECURE_HOSTS:}
+    # The registries that answer the promises contract (platform ADR-001, alerting ADR-044): the rule source each serves, the service and the BIAN path of its
+    # domain. A new source is one entry here (and a line in the source list of the domain); nothing here knows a registry's fields.
+    registries:
+      BACKUP:
+        url: ${BACKUP_REGISTRY_SERVICE_URL:`http://localhost:8105`}
+        path: /it-backup-registry/v1
+      PATCH:
+        url: ${PATCH_REGISTRY_SERVICE_URL:`http://localhost:8106`}
+        path: /it-patch-registry/v1
+      CAPACITY:
+        url: ${CAPACITY_REGISTRY_SERVICE_URL:`http://localhost:8107`}
+        path: /it-capacity-registry/v1
+      VENDOR:
+        url: ${VENDOR_REGISTRY_SERVICE_URL:`http://localhost:8108`}
+        path: /it-vendor-registry/v1
+      LICENSE:
+        url: ${LICENSE_REGISTRY_SERVICE_URL:`http://localhost:8109`}
+        path: /it-license-registry/v1
+      DR:
+        url: ${DR_REGISTRY_SERVICE_URL:`http://localhost:8112`}
+        path: /it-dr-registry/v1
+      CLOUD_INVENTORY:
+        url: ${CLOUD_INVENTORY_SERVICE_URL:`http://localhost:8113`}
+        path: /it-cloud-inventory/v1
+      PROCUREMENT:
+        url: ${PROCUREMENT_SERVICE_URL:`http://localhost:8114`}
+        path: /it-procurement/v1
